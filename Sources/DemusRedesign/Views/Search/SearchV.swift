@@ -66,6 +66,27 @@ public struct SearchV: View {
                     searchVM.performSearch()
                 }
             }
+            // MARK: AppRoute destination handler — required for SongRow artist/album links
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .artist(let browseId):
+                    // Prefer matched artist; fallback to stub from songs list (ArtistV fetches full data)
+                    let matchedArtist = searchVM.matchedArtists.first(where: { $0.id == browseId })
+                    let stubArtist = searchVM.searchResults.compactMap({ s -> Artist? in
+                        guard s.artistBrowseId == browseId || s.artistId == browseId else { return nil }
+                        return Artist(id: browseId, name: s.artistName)
+                    }).first
+                    ArtistV(browseId: browseId, initialArtist: matchedArtist ?? stubArtist)
+                case .album(let browseId):
+                    // Look up in matched albums; fallback to stub (AlbumV will fetch)
+                    let album = searchVM.matchedAlbums.first(where: { $0.id == browseId })
+                    AlbumV(browseId: browseId, initialAlbum: album)
+                case .playlist(let playlistId):
+                    let pl = searchVM.matchedPlaylists.first(where: { $0.id == playlistId })
+                        ?? Playlist(id: playlistId, title: "Playlist")
+                    PlaylistDetailV(playlist: pl)
+                }
+            }
             .toolbar {
                 if !searchVM.query.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -272,11 +293,9 @@ public struct SearchV: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 16) {
                             ForEach(searchVM.matchedAlbums) { album in
-                                NavigationLink {
-                                    AlbumV(browseId: album.id, initialAlbum: album)
-                                } label: {
+                                NavigationLink(value: AppRoute.album(album.id)) {
                                     AlbumCard(album: album, size: 155) {
-                                        // NavigationLink
+                                        // NavigationLink(value:) handles navigation
                                     }
                                 }
                                 .buttonStyle(.plain)
@@ -297,11 +316,9 @@ public struct SearchV: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 16) {
                             ForEach(searchVM.matchedArtists) { artist in
-                                NavigationLink {
-                                    ArtistV(browseId: artist.id, initialArtist: artist)
-                                } label: {
+                                NavigationLink(value: AppRoute.artist(artist.id)) {
                                     ArtistCard(artist: artist, diameter: 120) {
-                                        // NavigationLink
+                                        // NavigationLink(value:) handles navigation
                                     }
                                 }
                                 .buttonStyle(.plain)
@@ -322,9 +339,7 @@ public struct SearchV: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 16) {
                             ForEach(searchVM.matchedPlaylists) { pl in
-                                NavigationLink {
-                                    PlaylistDetailV(playlist: pl)
-                                } label: {
+                                NavigationLink(value: AppRoute.playlist(pl.id)) {
                                     playlistCard(pl: pl, size: 155)
                                 }
                                 .buttonStyle(.plain)
@@ -342,9 +357,7 @@ public struct SearchV: View {
     private func topResultCard(item: TopResultItem) -> some View {
         switch item {
         case .artist(let artist):
-            NavigationLink {
-                ArtistV(browseId: artist.id, initialArtist: artist)
-            } label: {
+            NavigationLink(value: AppRoute.artist(artist.id)) {
                 HStack(spacing: 16) {
                     // Circular Artist Portrait
                     ZStack {
@@ -390,9 +403,7 @@ public struct SearchV: View {
             .buttonStyle(.plain)
             
         case .album(let album):
-            NavigationLink {
-                AlbumV(browseId: album.id, initialAlbum: album)
-            } label: {
+            NavigationLink(value: AppRoute.album(album.id)) {
                 HStack(spacing: 16) {
                     // Square Album Artwork
                     ZStack {
@@ -482,12 +493,7 @@ public struct SearchV: View {
                         .foregroundStyle(AppleMusicTheme.label)
                         .lineLimit(1)
                     
-                    NavigationLink {
-                        ArtistV(
-                            browseId: song.artistId,
-                            initialArtist: Artist(id: song.artistId, name: song.artistName)
-                        )
-                    } label: {
+                    NavigationLink(value: AppRoute.artist(song.artistId.isEmpty ? "artist-yt" : song.artistId)) {
                         Text("Song • \(song.artistName)")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
@@ -514,9 +520,7 @@ public struct SearchV: View {
             )
             
         case .playlist(let pl):
-            NavigationLink {
-                PlaylistDetailV(playlist: pl)
-            } label: {
+            NavigationLink(value: AppRoute.playlist(pl.id)) {
                 HStack(spacing: 16) {
                     ZStack {
                         if let url = ImageHelper.highResArtworkURL(from: pl.artworkURL, resolution: .card) {
@@ -592,11 +596,9 @@ public struct SearchV: View {
             
             LazyVGrid(columns: gridColumns, spacing: 16) {
                 ForEach(searchVM.matchedAlbums) { album in
-                    NavigationLink {
-                        AlbumV(browseId: album.id, initialAlbum: album)
-                    } label: {
+                    NavigationLink(value: AppRoute.album(album.id)) {
                         AlbumCard(album: album, size: 165) {
-                            // NavigationLink
+                            // NavigationLink(value:) handles navigation
                         }
                     }
                     .buttonStyle(.plain)
@@ -616,11 +618,9 @@ public struct SearchV: View {
             
             LazyVGrid(columns: gridColumns, spacing: 18) {
                 ForEach(searchVM.matchedArtists) { artist in
-                    NavigationLink {
-                        ArtistV(browseId: artist.id, initialArtist: artist)
-                    } label: {
+                    NavigationLink(value: AppRoute.artist(artist.id)) {
                         ArtistCard(artist: artist, diameter: 140) {
-                            // NavigationLink
+                            // NavigationLink(value:) handles navigation
                         }
                     }
                     .buttonStyle(.plain)
@@ -640,9 +640,7 @@ public struct SearchV: View {
             
             LazyVGrid(columns: gridColumns, spacing: 16) {
                 ForEach(searchVM.matchedPlaylists) { pl in
-                    NavigationLink {
-                        PlaylistDetailV(playlist: pl)
-                    } label: {
+                    NavigationLink(value: AppRoute.playlist(pl.id)) {
                         playlistCard(pl: pl, size: 165)
                     }
                     .buttonStyle(.plain)

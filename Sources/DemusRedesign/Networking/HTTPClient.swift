@@ -38,7 +38,7 @@ public final class HTTPClient: @unchecked Sendable {
     }
     
     // MARK: - Generic POST Request with Innertube Payload
-    public func postJSON(urlString: String, body: [String: Any]) async throws -> [String: Any] {
+    public func postJSON(urlString: String, body: [String: Any], headers: [String: String] = [:]) async throws -> [String: Any] {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
@@ -47,9 +47,18 @@ public final class HTTPClient: @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("https://music.youtube.com", forHTTPHeaderField: "Referer")
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
         
-        if GoogleAccountManager.shared.isLoggedIn && !GoogleAccountManager.shared.cookiesHeader.isEmpty {
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        
+        if request.value(forHTTPHeaderField: "User-Agent") == nil {
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        }
+        
+        if (url.host?.contains("youtube.com") == true || url.host?.contains("google.com") == true),
+           GoogleAccountManager.shared.isLoggedIn,
+           !GoogleAccountManager.shared.cookiesHeader.isEmpty {
             request.setValue(GoogleAccountManager.shared.cookiesHeader, forHTTPHeaderField: "Cookie")
         }
         
@@ -69,6 +78,12 @@ public final class HTTPClient: @unchecked Sendable {
     
     // MARK: - Generic GET Request
     public func get(url: URL, headers: [String: String] = [:]) async throws -> Data {
+        let (data, _) = try await getWithStatus(url: url, headers: headers)
+        return data
+    }
+    
+    // MARK: - GET Request with Status Code
+    public func getWithStatus(url: URL, headers: [String: String] = [:]) async throws -> (Data, Int) {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         for (k, v) in headers {
@@ -77,14 +92,19 @@ public final class HTTPClient: @unchecked Sendable {
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X)", forHTTPHeaderField: "User-Agent")
         }
-        if GoogleAccountManager.shared.isLoggedIn && !GoogleAccountManager.shared.cookiesHeader.isEmpty {
+        if (url.host?.contains("youtube.com") == true || url.host?.contains("google.com") == true),
+           GoogleAccountManager.shared.isLoggedIn,
+           !GoogleAccountManager.shared.cookiesHeader.isEmpty {
             request.setValue(GoogleAccountManager.shared.cookiesHeader, forHTTPHeaderField: "Cookie")
         }
         
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        return data
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return (data, httpResponse.statusCode)
     }
 }

@@ -35,8 +35,13 @@ public enum Endpoints {
     
     // iTunes Search API (Metadata & Preview Fallback)
     public static func iTunesSearch(query: String, limit: Int = 20) -> URL? {
-        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
-        return URL(string: "https://itunes.apple.com/search?term=\(encoded)&entity=song&limit=\(limit)")
+        var components = URLComponents(string: "https://itunes.apple.com/search")
+        components?.queryItems = [
+            URLQueryItem(name: "term", value: query),
+            URLQueryItem(name: "entity", value: "song"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        return components?.url
     }
     
     // YouTube Music Filter Parameters

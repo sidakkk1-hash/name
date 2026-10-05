@@ -85,31 +85,28 @@ public struct SongRow: View {
                 
                 // Tappable Subtitle: Artist Name -> ArtistV, Album -> AlbumV
                 HStack(spacing: 4) {
-                    NavigationLink {
-                        ArtistV(
-                            browseId: song.artistId,
-                            initialArtist: Artist(id: song.artistId, name: song.artistName)
-                        )
-                    } label: {
+                    if let aBrowseId = song.artistBrowseId, !aBrowseId.isEmpty, aBrowseId != "artist-yt" {
+                        NavigationLink(value: AppRoute.artist(aBrowseId)) {
+                            Text(song.artistName)
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
                         Text(song.artistName)
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .lineLimit(1)
                     }
-                    .buttonStyle(.plain)
                     
                     if let album = song.albumTitle, !album.isEmpty {
                         Text("•")
                             .font(.system(size: 10))
                             .foregroundStyle(AppleMusicTheme.tertiaryLabel)
                         
-                        if let aId = song.albumId, !aId.isEmpty {
-                            NavigationLink {
-                                AlbumV(
-                                    browseId: aId,
-                                    initialAlbum: Album(id: aId, title: album, artist: song.artistName)
-                                )
-                            } label: {
+                        if let aId = song.albumBrowseId, !aId.isEmpty {
+                            NavigationLink(value: AppRoute.album(aId)) {
                                 Text(album)
                                     .font(.system(size: 13, weight: .regular))
                                     .foregroundStyle(AppleMusicTheme.secondaryLabel)

@@ -146,6 +146,26 @@ public struct SongsV: View {
             .onAppear {
                 self.librarySongs = LibraryRepository.shared.librarySongs
             }
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .artist(let browseId):
+                    let artist = librarySongs.compactMap({ s -> Artist? in
+                        guard s.artistBrowseId == browseId || s.artistId == browseId else { return nil }
+                        return Artist(id: browseId, name: s.artistName)
+                    }).first
+                    ArtistV(browseId: browseId, initialArtist: artist)
+                case .album(let browseId):
+                    let album = librarySongs.compactMap({ s -> Album? in
+                        guard s.albumBrowseId == browseId else { return nil }
+                        return Album(id: browseId, title: s.albumTitle ?? "", artist: s.artistName)
+                    }).first
+                    AlbumV(browseId: browseId, initialAlbum: album)
+                case .playlist(let playlistId):
+                    let pl = LibraryRepository.shared.playlists.first(where: { $0.id == playlistId })
+                        ?? Playlist(id: playlistId, title: "Playlist")
+                    PlaylistDetailV(playlist: pl)
+                }
+            }
         }
     }
 }

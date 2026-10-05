@@ -196,6 +196,17 @@ public final class SearchService: @unchecked Sendable {
                 if let topItem = parseTopCard(card: card) {
                     topResults.append(topItem)
                 }
+                // Also parse top songs listed inside the card
+                if let cardContents = card["contents"] as? [[String: Any]] {
+                    for c in cardContents {
+                        if let r = c["musicResponsiveListItemRenderer"] as? [String: Any],
+                           let song = parseSingleSong(renderer: r) {
+                            if !songs.contains(where: { $0.id == song.id }) {
+                                songs.append(song)
+                            }
+                        }
+                    }
+                }
             }
             
             // Check for Shelves or ItemSections
@@ -212,15 +223,23 @@ public final class SearchService: @unchecked Sendable {
                 let pageType = ((browse?["browseEndpointContextSupportedConfigs"] as? [String: Any])?["browseEndpointContextMusicConfig"] as? [String: Any])?["pageType"] as? String
                 let browseId = browse?["browseId"] as? String
                 
-                if pageType == "MUSIC_PAGE_TYPE_ARTIST" || (browseId?.hasPrefix("UC") == true) {
+                // Subtitle text fallback for categorization
+                var subtitleText = ""
+                if let flexCols = renderer["flexColumns"] as? [[String: Any]], flexCols.count > 1 {
+                    let col1 = flexCols[1]["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any]
+                    let runs1 = (col1?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+                    subtitleText = runs1.compactMap { $0["text"] as? String }.joined(separator: " ").lowercased()
+                }
+                
+                if pageType == "MUSIC_PAGE_TYPE_ARTIST" || (browseId?.hasPrefix("UC") == true) || subtitleText.contains("artist") {
                     if let artist = parseSingleArtist(renderer: renderer) {
                         artists.append(artist)
                     }
-                } else if pageType == "MUSIC_PAGE_TYPE_ALBUM" || (browseId?.hasPrefix("MPRE") == true) || (browseId?.hasPrefix("OLAK") == true) {
+                } else if pageType == "MUSIC_PAGE_TYPE_ALBUM" || (browseId?.hasPrefix("MPRE") == true) || (browseId?.hasPrefix("OLAK") == true) || subtitleText.contains("album") || subtitleText.contains("single") || subtitleText.contains("ep") {
                     if let album = parseSingleAlbum(renderer: renderer) {
                         albums.append(album)
                     }
-                } else if pageType == "MUSIC_PAGE_TYPE_PLAYLIST" || (browseId?.hasPrefix("VL") == true) || (browseId?.hasPrefix("PL") == true) {
+                } else if pageType == "MUSIC_PAGE_TYPE_PLAYLIST" || (browseId?.hasPrefix("VL") == true) || (browseId?.hasPrefix("PL") == true) || subtitleText.contains("playlist") {
                     if let pl = parseSinglePlaylist(renderer: renderer) {
                         playlists.append(pl)
                     }
@@ -403,8 +422,10 @@ public final class SearchService: @unchecked Sendable {
             id: videoId,
             title: title,
             artistId: artistId.isEmpty ? "artist-\(artist)" : artistId,
+            artistBrowseId: artistId.isEmpty ? nil : artistId,
             artistName: artist,
             albumId: albumId,
+            albumBrowseId: albumId,
             albumTitle: album,
             artworkURL: artworkURL,
             duration: duration,
@@ -482,7 +503,9 @@ public final class SearchService: @unchecked Sendable {
             id: albumId,
             title: title,
             artist: artist,
+            artistName: artist,
             artistId: artistId,
+            artistBrowseId: artistId,
             artworkURL: artworkURL,
             year: year,
             albumType: albumType

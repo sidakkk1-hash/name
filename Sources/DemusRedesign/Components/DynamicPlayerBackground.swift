@@ -73,6 +73,7 @@ public struct DynamicPlayerBackground: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .ignoresSafeArea()
+        .allowsHitTesting(false)
         .onAppear {
             isBreathing = true
         }

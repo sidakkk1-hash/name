@@ -18,14 +18,41 @@ public enum TopResultItem: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - AppRoute (Global Hierarchical Navigation Route)
+public enum AppRoute: Hashable, Sendable {
+    case artist(String)
+    case album(String)
+    case playlist(String)
+}
+
+// MARK: - PlaybackState (Authoritative AVFoundation Playback Lifecycle)
+public enum PlaybackState: Equatable, Sendable {
+    case idle
+    case resolving
+    case buffering
+    case playing
+    case paused
+    case failed(String)
+}
+
 // MARK: - Song Model (Matches Demus Demus4Song Binary Metadata)
 public struct Song: Identifiable, Hashable, Codable, Sendable {
     public let id: String // YouTube VideoId or Stream ID
+    public var videoId: String { id }
     public var title: String
     public var artistId: String
+    public var artistBrowseId: String?
     public var artistName: String
     public var albumId: String?
+    public var albumBrowseId: String? {
+        get { albumId }
+        set { albumId = newValue }
+    }
     public var albumTitle: String?
+    public var albumName: String? {
+        get { albumTitle }
+        set { albumTitle = newValue }
+    }
     public var artworkURL: URL?
     public var duration: TimeInterval
     public var streamURL: URL?
@@ -45,9 +72,12 @@ public struct Song: Identifiable, Hashable, Codable, Sendable {
         id: String,
         title: String,
         artistId: String = "artist-yt",
+        artistBrowseId: String? = nil,
         artistName: String,
         albumId: String? = nil,
+        albumBrowseId: String? = nil,
         albumTitle: String? = nil,
+        albumName: String? = nil,
         artworkURL: URL? = nil,
         duration: TimeInterval = 0,
         streamURL: URL? = nil,
@@ -58,10 +88,13 @@ public struct Song: Identifiable, Hashable, Codable, Sendable {
     ) {
         self.id = id
         self.title = title
-        self.artistId = artistId
+        let resolvedArtistBrowseId = artistBrowseId ?? (artistId.hasPrefix("UC") || artistId.hasPrefix("FEmusic_") ? artistId : nil)
+        self.artistBrowseId = resolvedArtistBrowseId
+        self.artistId = artistId != "artist-yt" ? artistId : (resolvedArtistBrowseId ?? "artist-yt")
         self.artistName = artistName
-        self.albumId = albumId
-        self.albumTitle = albumTitle
+        let resolvedAlbumId = albumBrowseId ?? albumId
+        self.albumId = resolvedAlbumId
+        self.albumTitle = albumName ?? albumTitle
         self.artworkURL = artworkURL
         self.duration = duration
         self.streamURL = streamURL
@@ -75,9 +108,18 @@ public struct Song: Identifiable, Hashable, Codable, Sendable {
 // MARK: - Album Model (Matches Demus.Album)
 public struct Album: Identifiable, Hashable, Codable, Sendable {
     public let id: String // YouTube Music browseId (e.g. MPREb_...)
+    public var browseId: String { id }
     public var title: String
     public var artist: String
+    public var artistName: String {
+        get { artist }
+        set { artist = newValue }
+    }
     public var artistId: String?
+    public var artistBrowseId: String? {
+        get { artistId }
+        set { artistId = newValue }
+    }
     public var artworkURL: URL?
     public var songs: [Song]
     public var releaseDate: String?
@@ -90,7 +132,9 @@ public struct Album: Identifiable, Hashable, Codable, Sendable {
         id: String = UUID().uuidString,
         title: String,
         artist: String,
+        artistName: String? = nil,
         artistId: String? = nil,
+        artistBrowseId: String? = nil,
         artworkURL: URL? = nil,
         songs: [Song] = [],
         releaseDate: String? = nil,
@@ -101,8 +145,8 @@ public struct Album: Identifiable, Hashable, Codable, Sendable {
     ) {
         self.id = id
         self.title = title
-        self.artist = artist
-        self.artistId = artistId
+        self.artist = artistName ?? artist
+        self.artistId = artistBrowseId ?? artistId
         self.artworkURL = artworkURL
         self.songs = songs
         self.releaseDate = releaseDate
@@ -116,6 +160,7 @@ public struct Album: Identifiable, Hashable, Codable, Sendable {
 // MARK: - Artist Model (Matches Demus.Artist)
 public struct Artist: Identifiable, Hashable, Codable, Sendable {
     public let id: String // YouTube Music browseId (e.g. UC...)
+    public var browseId: String { id }
     public var name: String
     public var artworkURL: URL?
     public var heroImageURL: URL?
@@ -157,6 +202,8 @@ public struct Artist: Identifiable, Hashable, Codable, Sendable {
 // MARK: - Playlist Model (Matches Demus Demus8Playlist)
 public struct Playlist: Identifiable, Hashable, Codable, Sendable {
     public let id: String
+    public var browseId: String { id }
+    public var playlistId: String { id }
     public var title: String
     public var author: String?
     public var descriptionText: String?
