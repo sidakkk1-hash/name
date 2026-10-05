@@ -23,7 +23,7 @@ public struct DynamicPlayerBackground: View {
                 Color.black
                 
                 // Blurred Artwork Layer with smooth crossfade
-                if let url = artworkURL {
+                if let url = ImageHelper.highResArtworkURL(from: artworkURL) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):

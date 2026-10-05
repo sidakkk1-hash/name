@@ -19,7 +19,7 @@ public struct NowPlayingArtwork: View {
         let artworkSize = min(targetWidth * 0.80, 360)
         
         ZStack {
-            if let song = song, let url = song.artworkURL {
+            if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

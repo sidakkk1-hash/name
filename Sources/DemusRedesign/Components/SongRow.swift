@@ -28,7 +28,7 @@ public struct SongRow: View {
             HStack(spacing: 14) {
                 // Artwork Thumbnail
                 ZStack {
-                    if let url = song.artworkURL {
+                    if let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id) {
                         AsyncImage(url: url) { phase in
                             switch phase {
                             case .success(let img):

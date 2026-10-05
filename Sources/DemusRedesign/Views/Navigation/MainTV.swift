@@ -63,6 +63,14 @@ public struct DemusAppRootView: View {
     public init() {}
     
     public var body: some View {
-        MainTV()
+        ZStack {
+            MainTV()
+            #if canImport(UIKit)
+            WKAudioEngineView()
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .allowsHitTesting(false)
+            #endif
+        }
     }
 }

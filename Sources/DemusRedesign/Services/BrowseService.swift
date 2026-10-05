@@ -68,7 +68,7 @@ public final class BrowseService: @unchecked Sendable {
                let thumbs = (cropped["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]],
                let last = thumbs.last,
                let urlStr = last["url"] as? String {
-                artworkURL = URL(string: urlStr)
+                artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
             }
         }
         
@@ -99,7 +99,7 @@ public final class BrowseService: @unchecked Sendable {
                let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                let last = thumbs.last,
                let urlStr = last["url"] as? String {
-                artworkURL = URL(string: urlStr)
+                artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
             }
         }
         
@@ -114,7 +114,7 @@ public final class BrowseService: @unchecked Sendable {
                let thumbs = thumb["thumbnails"] as? [[String: Any]],
                let last = thumbs.last,
                let urlStr = last["url"] as? String {
-                artworkURL = URL(string: urlStr)
+                artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
             }
         }
         
@@ -245,7 +245,7 @@ public final class BrowseService: @unchecked Sendable {
                            let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                            let last = thumbs.last,
                            let urlStr = last["url"] as? String {
-                            thumbURL = URL(string: urlStr)
+                            thumbURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr), videoId: videoId)
                         }
                         
                         if !videoId.isEmpty {
@@ -283,7 +283,7 @@ public final class BrowseService: @unchecked Sendable {
                            let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                            let last = thumbs.last,
                            let urlStr = last["url"] as? String {
-                            albumArtwork = URL(string: urlStr)
+                            albumArtwork = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
                         }
                         
                         albums.append(Album(id: albumId, title: albumTitle, artist: name, artworkURL: albumArtwork))

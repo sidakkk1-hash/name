@@ -24,7 +24,7 @@ public struct MiniPlayer: View {
                     HStack(spacing: 12) {
                         // Artwork Left
                         ZStack {
-                            if let url = currentSong.artworkURL {
+                            if let url = ImageHelper.highResArtworkURL(from: currentSong.artworkURL, videoId: currentSong.id) {
                                 AsyncImage(url: url) { phase in
                                     switch phase {
                                     case .success(let image):

@@ -176,7 +176,7 @@ public final class SearchService: @unchecked Sendable {
                    let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                    let last = thumbs.last,
                    let urlStr = last["url"] as? String {
-                    artworkURL = URL(string: urlStr)
+                    artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr), videoId: videoId)
                 }
                 
                 if !videoId.isEmpty {
@@ -247,7 +247,7 @@ public final class SearchService: @unchecked Sendable {
                    let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                    let last = thumbs.last,
                    let urlStr = last["url"] as? String {
-                    artworkURL = URL(string: urlStr)
+                    artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
                 }
                 
                 albums.append(Album(id: albumId, title: title, artist: artist, artworkURL: artworkURL))
@@ -298,7 +298,7 @@ public final class SearchService: @unchecked Sendable {
                    let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
                    let last = thumbs.last,
                    let urlStr = last["url"] as? String {
-                    artworkURL = URL(string: urlStr)
+                    artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
                 }
                 
                 artists.append(Artist(id: artistId, name: name, artworkURL: artworkURL))
