@@ -271,7 +271,9 @@ public final class PlayerEngine: @unchecked Sendable {
         lastUserToggleTime = now
         
         #if canImport(UIKit)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { @MainActor in
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
         #endif
         
         if isPlaying {

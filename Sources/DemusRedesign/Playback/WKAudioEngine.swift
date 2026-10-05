@@ -96,10 +96,10 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
             do {
                 try AVAudioSession.sharedInstance().setActive(true)
             } catch {}
-            if self?.silentAudioPlayer?.isPlaying != true {
-                self?.silentAudioPlayer?.play()
-            }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                if self?.silentAudioPlayer?.isPlaying != true {
+                    self?.silentAudioPlayer?.play()
+                }
                 self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
             }
         }
