@@ -33,14 +33,14 @@ public struct ArtistV: View {
     
     public var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 24) {
+            VStack(alignment: .leading, spacing: 24) {
                 // 1. Edge-to-Edge Hero Header
                 ZStack(alignment: .bottom) {
-                    // Hero Image
+                    // Hero Image (Strictly clipped to avoid horizontal overflow)
                     heroImageView
                         .frame(height: 380)
-                        .frame(maxWidth: .infinity)
                         .clipped()
+                        .allowsHitTesting(false)
                     
                     // Blurred gradient overlay fading into dark backdrop
                     LinearGradient(
@@ -63,6 +63,7 @@ public struct ArtistV: View {
                             .multilineTextAlignment(.center)
                             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 3)
                             .padding(.horizontal, 24)
+                            .allowsHitTesting(false)
                         
                         // Three Apple Music action buttons: Info, Play, Favorite
                         HStack(spacing: 20) {
@@ -130,15 +131,21 @@ public struct ArtistV: View {
                             .buttonStyle(.plain)
                             .contentShape(Circle())
                         }
+                        .allowsHitTesting(true)
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.bottom, 14)
                 }
+                .frame(height: 380)
+                .frame(maxWidth: .infinity)
+                .clipped()
                 
                 // Loading Indicator
                 if isLoading {
                     ProgressView()
                         .tint(AppleMusicTheme.accent)
                         .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
                 }
                 
                 // 2. Latest Release Card
@@ -197,14 +204,10 @@ public struct ArtistV: View {
                 // 3. Top Songs Section
                 if !currentArtist.topSongs.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Top Songs")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.label)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
+                        Text("Top Songs")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(AppleMusicTheme.label)
+                            .padding(.horizontal, 16)
                         
                         LazyVStack(spacing: 4) {
                             ForEach(Array(currentArtist.topSongs.prefix(10).enumerated()), id: \.element.id) { index, song in
@@ -223,20 +226,16 @@ public struct ArtistV: View {
                 // 4. Albums Carousel
                 if !currentArtist.albums.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Albums")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.label)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
+                        Text("Albums")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(AppleMusicTheme.label)
+                            .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
+                            LazyHStack(spacing: 16) {
                                 ForEach(currentArtist.albums) { album in
                                     NavigationLink(value: AppRoute.album(album.id)) {
-                                        AlbumCard(album: album, size: 155)
+                                        AlbumCard(album: album, size: 160)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -249,20 +248,16 @@ public struct ArtistV: View {
                 // 5. Singles & EPs Carousel
                 if !currentArtist.singles.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Singles & EPs")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.label)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
+                        Text("Singles & EPs")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(AppleMusicTheme.label)
+                            .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
+                            LazyHStack(spacing: 16) {
                                 ForEach(currentArtist.singles) { single in
                                     NavigationLink(value: AppRoute.album(single.id)) {
-                                        AlbumCard(album: single, size: 145)
+                                        AlbumCard(album: single, size: 160)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -275,20 +270,16 @@ public struct ArtistV: View {
                 // 6. Similar Artists Carousel (Fans Might Also Like)
                 if !currentArtist.relatedArtists.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Fans Might Also Like")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.label)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
+                        Text("Fans Might Also Like")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(AppleMusicTheme.label)
+                            .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
+                            LazyHStack(spacing: 16) {
                                 ForEach(currentArtist.relatedArtists) { related in
                                     NavigationLink(value: AppRoute.artist(related.id)) {
-                                        ArtistCard(artist: related, diameter: 120)
+                                        ArtistCard(artist: related, diameter: 135)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -298,22 +289,13 @@ public struct ArtistV: View {
                     }
                 }
                 
-                Spacer(minLength: 110) // Room for CompactPlayer
+                Spacer(minLength: 120) // Room for CompactPlayer
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
         .ignoresSafeArea(edges: .top)
         .navigationBarBackButtonHidden(true)
-        .navigationDestination(for: AppRoute.self) { route in
-            switch route {
-            case .artist(let aBrowseId):
-                ArtistV(browseId: aBrowseId)
-            case .album(let albBrowseId):
-                AlbumV(browseId: albBrowseId)
-            case .playlist(let plId):
-                PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
-            }
-        }
         .toolbar {
             // Circular Back Button on top left
             ToolbarItem(placement: .topBarLeading) {
@@ -371,17 +353,11 @@ public struct ArtistV: View {
                 img
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(height: 380)
-                    .clipped()
             } placeholder: {
                 heroPlaceholder
             }
-            .frame(height: 380)
-            .clipped()
         } else {
             heroPlaceholder
-                .frame(height: 380)
-                .clipped()
         }
     }
     
@@ -401,39 +377,44 @@ public struct ArtistV: View {
     
     // MARK: - Artist Bio Sheet
     private var artistBioSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let subs = currentArtist.subscribers, !subs.isEmpty {
-                        Text(subs)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AppleMusicTheme.accent)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Text(currentArtist.name)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(AppleMusicTheme.label)
                     
-                    if let bio = currentArtist.bio, !bio.isEmpty {
-                        Text(bio)
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(AppleMusicTheme.label)
-                            .lineSpacing(5)
-                    } else {
-                        Text("No biography available for this artist.")
-                            .font(.system(size: 15, weight: .regular))
+                    Spacer()
+                    
+                    Button {
+                        isShowingBio = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(24)
-            }
-            .navigationTitle(currentArtist.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        isShowingBio = false
-                    }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AppleMusicTheme.accent)
+                .padding(.bottom, 8)
+                
+                if let subs = currentArtist.subscribers, !subs.isEmpty {
+                    Text(subs)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppleMusicTheme.accent)
+                }
+                
+                if let bio = currentArtist.bio, !bio.isEmpty {
+                    Text(bio)
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(AppleMusicTheme.label)
+                        .lineSpacing(5)
+                } else {
+                    Text("No biography available for this artist.")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
                 }
             }
+            .padding(24)
         }
     }
     

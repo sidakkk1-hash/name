@@ -16,15 +16,24 @@ public final class BrowseService: @unchecked Sendable {
         let cleanId = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanId.isEmpty else { return nil }
         
+        // YouTube Music browse endpoint requires "VL" prefix for playlist-backed albums (OLAK / PL)
+        var queryBrowseId = cleanId
+        if (queryBrowseId.hasPrefix("OLAK") || queryBrowseId.hasPrefix("PL")) && !queryBrowseId.hasPrefix("VL") {
+            queryBrowseId = "VL\(queryBrowseId)"
+        }
+        
+        print("[BrowseService] fetchAlbum started for browseId: \(cleanId) (queryBrowseId: \(queryBrowseId))")
+        
         let body: [String: Any] = [
             "context": HTTPClient.makeYTMContext(),
-            "browseId": cleanId
+            "browseId": queryBrowseId
         ]
         
         do {
             let json = try await client.postJSON(urlString: Endpoints.browse, body: body)
             return parseAlbumBrowse(id: cleanId, json: json)
         } catch {
+            print("[BrowseService] fetchAlbum network error for \(cleanId):", error)
             return nil
         }
     }
@@ -43,6 +52,7 @@ public final class BrowseService: @unchecked Sendable {
             let json = try await client.postJSON(urlString: Endpoints.browse, body: body)
             return parseArtistBrowse(id: cleanId, json: json)
         } catch {
+            print("[BrowseService] fetchArtist network error for \(cleanId):", error)
             return nil
         }
     }
@@ -62,6 +72,7 @@ public final class BrowseService: @unchecked Sendable {
             let json = try await client.postJSON(urlString: Endpoints.browse, body: body)
             return parsePlaylistBrowse(id: cleanId, json: json)
         } catch {
+            print("[BrowseService] fetchPlaylist network error for \(cleanId):", error)
             return nil
         }
     }
@@ -77,53 +88,67 @@ public final class BrowseService: @unchecked Sendable {
         var albumType = "Album"
         var descriptionText: String?
         var songs: [Song] = []
+        var sectionRendererTypes: [String] = []
         
-        // 1. Check twoColumn tabs header for musicResponsiveHeaderRenderer
-        if let twoCol = (json["contents"] as? [String: Any])?["twoColumnBrowseResultsRenderer"] as? [String: Any],
+        let contentsDict = json["contents"] as? [String: Any] ?? [:]
+        let contentsKeys = Array(contentsDict.keys)
+        
+        // 1. Locate Header Data (twoColumn tab content, singleColumn tab content, or root header)
+        var candidateHeaderSections: [[String: Any]] = []
+        
+        if let twoCol = contentsDict["twoColumnBrowseResultsRenderer"] as? [String: Any],
            let tabs = twoCol["tabs"] as? [[String: Any]],
            let firstTab = tabs.first,
            let tabContent = (firstTab["tabRenderer"] as? [String: Any])?["content"] as? [String: Any],
            let sectionList = tabContent["sectionListRenderer"] as? [String: Any],
-           let contents = sectionList["contents"] as? [[String: Any]],
-           let firstSec = contents.first,
-           let responsiveHeader = firstSec["musicResponsiveHeaderRenderer"] as? [String: Any] {
-            
-            if let titleRuns = (responsiveHeader["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
-                title = first["text"] as? String ?? title
-            }
-            
-            // Strapline often has the artist name + artist browseId
-            if let strapline = (responsiveHeader["straplineTextOne"] as? [String: Any])?["runs"] as? [[String: Any]], let first = strapline.first {
-                artist = first["text"] as? String ?? artist
-                let nav = first["navigationEndpoint"] as? [String: Any]
-                let browse = nav?["browseEndpoint"] as? [String: Any]
-                artistId = browse?["browseId"] as? String
-            }
-            
-            // Subtitle runs: type, bullet, year
-            if let subtitleRuns = (responsiveHeader["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]] {
-                for r in subtitleRuns {
-                    let text = r["text"] as? String ?? ""
-                    if text == "Album" || text == "Single" || text == "EP" {
-                        albumType = text
-                    } else if text.count == 4 && Int(text) != nil {
-                        year = text
-                        releaseDate = text
+           let contents = sectionList["contents"] as? [[String: Any]] {
+            candidateHeaderSections.append(contentsOf: contents)
+        }
+        
+        if let singleCol = contentsDict["singleColumnBrowseResultsRenderer"] as? [String: Any],
+           let tabs = singleCol["tabs"] as? [[String: Any]],
+           let firstTab = tabs.first,
+           let tabContent = (firstTab["tabRenderer"] as? [String: Any])?["content"] as? [String: Any],
+           let sectionList = tabContent["sectionListRenderer"] as? [String: Any],
+           let contents = sectionList["contents"] as? [[String: Any]] {
+            candidateHeaderSections.append(contentsOf: contents)
+        }
+        
+        // Search candidate sections for musicResponsiveHeaderRenderer
+        for sec in candidateHeaderSections {
+            if let responsiveHeader = sec["musicResponsiveHeaderRenderer"] as? [String: Any] {
+                if let titleRuns = (responsiveHeader["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
+                    title = first["text"] as? String ?? title
+                }
+                if let strapline = (responsiveHeader["straplineTextOne"] as? [String: Any])?["runs"] as? [[String: Any]], let first = strapline.first {
+                    artist = first["text"] as? String ?? artist
+                    let nav = first["navigationEndpoint"] as? [String: Any]
+                    let browse = nav?["browseEndpoint"] as? [String: Any]
+                    artistId = browse?["browseId"] as? String
+                }
+                if let subtitleRuns = (responsiveHeader["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]] {
+                    for r in subtitleRuns {
+                        let text = r["text"] as? String ?? ""
+                        if text == "Album" || text == "Single" || text == "EP" {
+                            albumType = text
+                        } else if text.count == 4 && Int(text) != nil {
+                            year = text
+                            releaseDate = text
+                        }
                     }
                 }
-            }
-            
-            if let descRuns = (responsiveHeader["description"] as? [String: Any])?["runs"] as? [[String: Any]], let first = descRuns.first {
-                descriptionText = first["text"] as? String
-            }
-            
-            if let thumbRenderer = responsiveHeader["thumbnail"] as? [String: Any],
-               let musicThumb = thumbRenderer["musicThumbnailRenderer"] as? [String: Any],
-               let thumbnail = musicThumb["thumbnail"] as? [String: Any],
-               let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
-               let last = thumbs.last,
-               let urlStr = last["url"] as? String {
-                artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
+                if let descRuns = (responsiveHeader["description"] as? [String: Any])?["runs"] as? [[String: Any]], let first = descRuns.first {
+                    descriptionText = first["text"] as? String
+                }
+                if let thumbRenderer = responsiveHeader["thumbnail"] as? [String: Any],
+                   let musicThumb = thumbRenderer["musicThumbnailRenderer"] as? [String: Any],
+                   let thumbnail = musicThumb["thumbnail"] as? [String: Any],
+                   let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
+                   let last = thumbs.last,
+                   let urlStr = last["url"] as? String {
+                    artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
+                }
+                break
             }
         }
         
@@ -161,6 +186,25 @@ public final class BrowseService: @unchecked Sendable {
                let urlStr = last["url"] as? String {
                 artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
             }
+        } else if let respHeader = header?["musicResponsiveHeaderRenderer"] as? [String: Any] {
+            if let titleRuns = (respHeader["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
+                title = first["text"] as? String ?? title
+            }
+            if let strapline = (respHeader["straplineTextOne"] as? [String: Any])?["runs"] as? [[String: Any]], let first = strapline.first {
+                artist = first["text"] as? String ?? artist
+                let nav = first["navigationEndpoint"] as? [String: Any]
+                let browse = nav?["browseEndpoint"] as? [String: Any]
+                artistId = browse?["browseId"] as? String
+            }
+            if artworkURL == nil,
+               let thumbRenderer = respHeader["thumbnail"] as? [String: Any],
+               let musicThumb = thumbRenderer["musicThumbnailRenderer"] as? [String: Any],
+               let thumbnail = musicThumb["thumbnail"] as? [String: Any],
+               let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
+               let last = thumbs.last,
+               let urlStr = last["url"] as? String {
+                artworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
+            }
         }
         
         // 3. Fallback: Microformat
@@ -178,25 +222,48 @@ public final class BrowseService: @unchecked Sendable {
             }
         }
         
-        // 4. Tracks list
-        var sections: [[String: Any]] = []
-        if let twoCol = (json["contents"] as? [String: Any])?["twoColumnBrowseResultsRenderer"] as? [String: Any],
+        // 4. Tracks list across all possible hierarchies
+        var trackSections: [[String: Any]] = []
+        
+        // Hierarchy A: twoColumnBrowseResultsRenderer secondaryContents
+        if let twoCol = contentsDict["twoColumnBrowseResultsRenderer"] as? [String: Any],
            let sec = (twoCol["secondaryContents"] as? [String: Any])?["sectionListRenderer"] as? [String: Any],
            let contents = sec["contents"] as? [[String: Any]] {
-            sections = contents
-        } else if let singleCol = (json["contents"] as? [String: Any])?["singleColumnBrowseResultsRenderer"] as? [String: Any],
-                  let tabs = singleCol["tabs"] as? [[String: Any]],
-                  let firstTab = tabs.first,
-                  let sec = (firstTab["tabRenderer"] as? [String: Any])?["content"] as? [String: Any],
-                  let sectionList = sec["sectionListRenderer"] as? [String: Any],
-                  let contents = sectionList["contents"] as? [[String: Any]] {
-            sections = contents
+            trackSections.append(contentsOf: contents)
+        }
+        
+        // Hierarchy B: twoColumnBrowseResultsRenderer tabs content
+        if let twoCol = contentsDict["twoColumnBrowseResultsRenderer"] as? [String: Any],
+           let tabs = twoCol["tabs"] as? [[String: Any]],
+           let firstTab = tabs.first,
+           let tabContent = (firstTab["tabRenderer"] as? [String: Any])?["content"] as? [String: Any],
+           let sectionList = tabContent["sectionListRenderer"] as? [String: Any],
+           let contents = sectionList["contents"] as? [[String: Any]] {
+            trackSections.append(contentsOf: contents)
+        }
+        
+        // Hierarchy C: singleColumnBrowseResultsRenderer tabs content
+        if let singleCol = contentsDict["singleColumnBrowseResultsRenderer"] as? [String: Any],
+           let tabs = singleCol["tabs"] as? [[String: Any]],
+           let firstTab = tabs.first,
+           let tabContent = (firstTab["tabRenderer"] as? [String: Any])?["content"] as? [String: Any],
+           let sectionList = tabContent["sectionListRenderer"] as? [String: Any],
+           let contents = sectionList["contents"] as? [[String: Any]] {
+            trackSections.append(contentsOf: contents)
         }
         
         var trackIdx = 1
-        for s in sections {
-            let shelf = s["musicShelfRenderer"] as? [String: Any] ?? s["musicPlaylistShelfRenderer"] as? [String: Any]
-            guard let items = shelf?["contents"] as? [[String: Any]] else { continue }
+        for s in trackSections {
+            var items: [[String: Any]] = []
+            if let shelf = s["musicShelfRenderer"] as? [String: Any], let c = shelf["contents"] as? [[String: Any]] {
+                sectionRendererTypes.append("musicShelfRenderer (\(c.count) items)")
+                items = c
+            } else if let pShelf = s["musicPlaylistShelfRenderer"] as? [String: Any], let c = pShelf["contents"] as? [[String: Any]] {
+                sectionRendererTypes.append("musicPlaylistShelfRenderer (\(c.count) items)")
+                items = c
+            }
+            
+            guard !items.isEmpty else { continue }
             
             for item in items {
                 guard let r = item["musicResponsiveListItemRenderer"] as? [String: Any] else { continue }
@@ -206,8 +273,27 @@ public final class BrowseService: @unchecked Sendable {
                 var videoId = ""
                 var duration: TimeInterval = 0
                 var isExplicit = false
+                var trackArtworkURL: URL? = artworkURL
                 
-                // Badges
+                // 1. Direct VideoId from playlistItemData
+                if let pData = r["playlistItemData"] as? [String: Any],
+                   let vId = pData["videoId"] as? String, !vId.isEmpty {
+                    videoId = vId
+                }
+                
+                // 2. VideoId from overlay play button
+                if videoId.isEmpty,
+                   let overlay = r["overlay"] as? [String: Any],
+                   let thumbOverlay = overlay["musicItemThumbnailOverlayRenderer"] as? [String: Any],
+                   let content = thumbOverlay["content"] as? [String: Any],
+                   let playBtn = content["musicPlayButtonRenderer"] as? [String: Any],
+                   let playNav = playBtn["playNavigationEndpoint"] as? [String: Any],
+                   let watch = playNav["watchEndpoint"] as? [String: Any],
+                   let vId = watch["videoId"] as? String, !vId.isEmpty {
+                    videoId = vId
+                }
+                
+                // 3. Badges (Explicit)
                 if let badges = r["badges"] as? [[String: Any]] {
                     for b in badges {
                         if let badgeRenderer = b["musicInlineBadgeRenderer"] as? [String: Any],
@@ -219,15 +305,20 @@ public final class BrowseService: @unchecked Sendable {
                     }
                 }
                 
-                // Title from flexColumns[0]
+                // 4. FlexColumns (Col 0: Title & VideoId fallback, Col 1: Artist, Col 2: Album/Plays)
                 if let flexCols = r["flexColumns"] as? [[String: Any]], !flexCols.isEmpty {
                     let col0 = flexCols[0]["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any]
-                    let runs = (col0?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
-                    if let first = runs.first {
+                    let runs0 = (col0?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+                    if let first = runs0.first {
                         trackTitle = first["text"] as? String ?? trackTitle
+                        if videoId.isEmpty,
+                           let nav = first["navigationEndpoint"] as? [String: Any],
+                           let watch = nav["watchEndpoint"] as? [String: Any],
+                           let vId = watch["videoId"] as? String, !vId.isEmpty {
+                            videoId = vId
+                        }
                     }
                     
-                    // Col 1: Artist (if different from album artist)
                     if flexCols.count > 1 {
                         let col1 = flexCols[1]["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any]
                         let runs1 = (col1?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
@@ -243,7 +334,15 @@ public final class BrowseService: @unchecked Sendable {
                     }
                 }
                 
-                // Duration from fixedColumns[0]
+                // 5. VideoId from navigationEndpoint on root
+                if videoId.isEmpty,
+                   let nav = r["navigationEndpoint"] as? [String: Any],
+                   let watch = nav["watchEndpoint"] as? [String: Any],
+                   let vId = watch["videoId"] as? String, !vId.isEmpty {
+                    videoId = vId
+                }
+                
+                // 6. Duration from fixedColumns[0] or runs
                 if let fixedCols = r["fixedColumns"] as? [[String: Any]], !fixedCols.isEmpty {
                     let fix0 = fixedCols[0]["musicResponsiveListItemFixedColumnRenderer"] as? [String: Any]
                     let runs = (fix0?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
@@ -252,14 +351,14 @@ public final class BrowseService: @unchecked Sendable {
                     }
                 }
                 
-                // VideoId from overlay
-                if let overlay = r["overlay"] as? [String: Any],
-                   let thumbOverlay = overlay["musicItemThumbnailOverlayRenderer"] as? [String: Any],
-                   let content = thumbOverlay["content"] as? [String: Any],
-                   let playBtn = content["musicPlayButtonRenderer"] as? [String: Any],
-                   let playNav = playBtn["playNavigationEndpoint"] as? [String: Any],
-                   let watch = playNav["watchEndpoint"] as? [String: Any] {
-                    videoId = watch["videoId"] as? String ?? ""
+                // 7. Track-level thumbnail if present
+                if let thumbRenderer = r["thumbnail"] as? [String: Any],
+                   let musicThumb = thumbRenderer["musicThumbnailRenderer"] as? [String: Any],
+                   let thumbnail = musicThumb["thumbnail"] as? [String: Any],
+                   let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
+                   let last = thumbs.last,
+                   let urlStr = last["url"] as? String {
+                    trackArtworkURL = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
                 }
                 
                 if !videoId.isEmpty {
@@ -270,7 +369,7 @@ public final class BrowseService: @unchecked Sendable {
                         artistName: trackArtist,
                         albumId: id,
                         albumTitle: title,
-                        artworkURL: artworkURL,
+                        artworkURL: trackArtworkURL,
                         duration: duration,
                         trackNumber: trackIdx,
                         isExplicit: isExplicit
@@ -278,6 +377,12 @@ public final class BrowseService: @unchecked Sendable {
                     trackIdx += 1
                 }
             }
+        }
+        
+        print("[BrowseService] Album browseId: \(id), root contents keys: \(contentsKeys), section renderer types: \(sectionRendererTypes), parsed tracks: \(songs.count)")
+        
+        if songs.isEmpty {
+            print("[BrowseService] WARNING: Zero tracks parsed for album \(id)! JSON root keys: \(json.keys.map { String($0) }), contents keys: \(contentsKeys), section renderer types: \(sectionRendererTypes)")
         }
         
         return Album(

@@ -230,6 +230,14 @@ public struct AlbumV: View {
                             Label("No Tracks Found", systemImage: "music.note")
                         } description: {
                             Text("This album does not have available tracks.")
+                        } actions: {
+                            Button("Retry") {
+                                Task {
+                                    await loadAlbumData()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppleMusicTheme.accent)
                         }
                         .padding(.top, 20)
                     }
@@ -288,16 +296,6 @@ public struct AlbumV: View {
                             .clipShape(Circle())
                     }
                 }
-            }
-        }
-        .navigationDestination(for: AppRoute.self) { route in
-            switch route {
-            case .artist(let aBrowseId):
-                ArtistV(browseId: aBrowseId)
-            case .album(let albBrowseId):
-                AlbumV(browseId: albBrowseId)
-            case .playlist(let plId):
-                PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
             }
         }
         .task {
