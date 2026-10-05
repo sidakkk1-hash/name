@@ -150,8 +150,18 @@ public struct SearchV: View {
                             }
                             
                             if searchVM.searchResults.isEmpty && searchVM.matchedAlbums.isEmpty && searchVM.matchedArtists.isEmpty {
-                                ContentUnavailableView.search(text: searchVM.query)
-                                    .padding(.top, 40)
+                                if searchVM.isSearching {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .tint(AppleMusicTheme.accent)
+                                            .padding(.top, 40)
+                                        Spacer()
+                                    }
+                                } else {
+                                    ContentUnavailableView.search(text: searchVM.query)
+                                        .padding(.top, 40)
+                                }
                             }
                         }
                     }

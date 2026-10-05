@@ -46,42 +46,74 @@ public final class MainTVM: @unchecked Sendable {
     public init() {}
 }
 
-// MARK: - SearchVM (Matches Demus.SearchVM)
+// MARK: - SearchVM (Matches Demus Demus8SearchVM)
 @Observable
 public final class SearchVM: @unchecked Sendable {
     public var query: String = ""
     public var searchResults: [Song] = []
     public var matchedAlbums: [Album] = []
     public var matchedArtists: [Artist] = []
-    public var searchHistory: [String] = ["The Weeknd", "After Hours", "Daft Punk", "Pop Hits"]
+    public var searchHistory: [String] = ["The Weeknd", "Daft Punk", "Billie Eilish", "Taylor Swift"]
+    public var suggestions: [String] = []
     public var isSearching: Bool = false
-    public var categories: [MusicCategory] = MockData.sampleCategories
+    public var categories: [MusicCategory] = SearchCategories.all
+    
+    private var searchTask: Task<Void, Never>?
     
     public init() {}
     
+    // MARK: - Live Search Execution
     public func performSearch() {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        searchTask?.cancel()
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         guard !q.isEmpty else {
             searchResults = []
             matchedAlbums = []
             matchedArtists = []
+            suggestions = []
             isSearching = false
             return
         }
         
         isSearching = true
-        searchResults = MockData.sampleSongs.filter {
-            $0.title.lowercased().contains(q) ||
-            $0.artistName.lowercased().contains(q) ||
-            ($0.albumTitle?.lowercased().contains(q) ?? false)
+        
+        searchTask = Task { @MainActor in
+            // Small debounce
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            
+            let response = await SearchService.shared.searchAll(query: q)
+            guard !Task.isCancelled else { return }
+            
+            self.searchResults = response.songs
+            self.matchedAlbums = response.albums
+            self.matchedArtists = response.artists
+            self.isSearching = false
+            
+            // Add to search history if not duplicate
+            if !self.searchHistory.contains(q) && response.songs.count > 0 {
+                self.searchHistory.insert(q, at: 0)
+                if self.searchHistory.count > 10 {
+                    self.searchHistory.removeLast()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Live Suggestion Typing
+    public func fetchSuggestions() {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else {
+            suggestions = []
+            return
         }
         
-        matchedAlbums = MockData.sampleAlbums.filter {
-            $0.title.lowercased().contains(q) || $0.artist.lowercased().contains(q)
-        }
-        
-        matchedArtists = MockData.sampleArtists.filter {
-            $0.name.lowercased().contains(q)
+        Task { @MainActor in
+            let list = await SearchService.shared.fetchSuggestions(for: q)
+            if !Task.isCancelled {
+                self.suggestions = list
+            }
         }
     }
 }
@@ -89,7 +121,7 @@ public final class SearchVM: @unchecked Sendable {
 // MARK: - SongVM (Matches Demus.SongVM)
 @Observable
 public final class SongVM: @unchecked Sendable {
-    public var volume: Double = 0.75
+    public var volume: Double = 0.8
     public var isLiked: Bool = false
     
     public init() {}

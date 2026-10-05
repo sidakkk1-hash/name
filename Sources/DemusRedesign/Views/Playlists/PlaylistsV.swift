@@ -4,7 +4,7 @@ import SwiftUI
 /// Reconstructed Playlists screen with 2-column adaptive grid of squircle playlist cards,
 /// "New Playlist" action, and empty state support.
 public struct PlaylistsV: View {
-    @State private var playlists: [Playlist] = MockData.samplePlaylists
+    @State private var playlists: [Playlist] = LibraryRepository.shared.playlists
     @State private var showingNewPlaylistAlert: Bool = false
     @State private var newPlaylistName: String = ""
     
@@ -23,7 +23,7 @@ public struct PlaylistsV: View {
                     ContentUnavailableView {
                         Label("No Playlists", systemImage: "music.note.list")
                     } description: {
-                        Text("Playlists you create or follow will appear here.")
+                        Text("Playlists you create or import will appear here.")
                     } actions: {
                         Button {
                             showingNewPlaylistAlert = true
@@ -95,6 +95,9 @@ public struct PlaylistsV: View {
                 }
             }
             .navigationTitle("Playlists")
+            .onAppear {
+                self.playlists = LibraryRepository.shared.playlists
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -114,9 +117,10 @@ public struct PlaylistsV: View {
                         let newPl = Playlist(
                             title: newPlaylistName,
                             descriptionText: "Created by you",
-                            artworkURL: URL(string: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800"),
+                            artworkURL: nil,
                             songs: []
                         )
+                        LibraryRepository.shared.addPlaylist(newPl)
                         playlists.insert(newPl, at: 0)
                         newPlaylistName = ""
                     }

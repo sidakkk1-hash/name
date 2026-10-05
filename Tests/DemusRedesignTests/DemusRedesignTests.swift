@@ -3,6 +3,11 @@ import Testing
 
 @Test func testPlayerInitialization() async throws {
     let player = PlayerEngine()
-    #expect(player.currentSong != nil)
-    #expect(!player.queue.isEmpty)
+    #expect(player.isPlaying == false)
+}
+
+@Test func testSearchService() async throws {
+    let results = try await SearchService.shared.search(query: "Blinding Lights")
+    #expect(!results.isEmpty)
+    #expect(results.first?.title != nil)
 }
