@@ -93,8 +93,9 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // Re-trigger playVideo if needed when app moves to background
-            self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
+            Task { @MainActor in
+                self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
+            }
         }
         #endif
     }
