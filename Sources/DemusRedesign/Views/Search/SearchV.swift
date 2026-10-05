@@ -294,9 +294,7 @@ public struct SearchV: View {
                         HStack(spacing: 16) {
                             ForEach(searchVM.matchedAlbums) { album in
                                 NavigationLink(value: AppRoute.album(album.id)) {
-                                    AlbumCard(album: album, size: 155) {
-                                        // NavigationLink(value:) handles navigation
-                                    }
+                                    AlbumCard(album: album, size: 155)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -317,9 +315,7 @@ public struct SearchV: View {
                         HStack(spacing: 16) {
                             ForEach(searchVM.matchedArtists) { artist in
                                 NavigationLink(value: AppRoute.artist(artist.id)) {
-                                    ArtistCard(artist: artist, diameter: 120) {
-                                        // NavigationLink(value:) handles navigation
-                                    }
+                                    ArtistCard(artist: artist, diameter: 120)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -597,9 +593,7 @@ public struct SearchV: View {
             LazyVGrid(columns: gridColumns, spacing: 16) {
                 ForEach(searchVM.matchedAlbums) { album in
                     NavigationLink(value: AppRoute.album(album.id)) {
-                        AlbumCard(album: album, size: 165) {
-                            // NavigationLink(value:) handles navigation
-                        }
+                        AlbumCard(album: album, size: 165)
                     }
                     .buttonStyle(.plain)
                 }
@@ -619,9 +613,7 @@ public struct SearchV: View {
             LazyVGrid(columns: gridColumns, spacing: 18) {
                 ForEach(searchVM.matchedArtists) { artist in
                     NavigationLink(value: AppRoute.artist(artist.id)) {
-                        ArtistCard(artist: artist, diameter: 140) {
-                            // NavigationLink(value:) handles navigation
-                        }
+                        ArtistCard(artist: artist, diameter: 140)
                     }
                     .buttonStyle(.plain)
                 }

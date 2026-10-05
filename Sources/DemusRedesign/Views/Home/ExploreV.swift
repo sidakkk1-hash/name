@@ -178,6 +178,16 @@ public struct ExploreV: View {
                 .padding(.bottom, 90) // Room for MiniPlayer
             }
             .navigationTitle("Listen Now")
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .artist(let aBrowseId):
+                    ArtistV(browseId: aBrowseId)
+                case .album(let albBrowseId):
+                    AlbumV(browseId: albBrowseId)
+                case .playlist(let plId):
+                    PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
+                }
+            }
             .sheet(isPresented: $isLoginSheetPresented) {
                 GoogleLoginSheet()
             }

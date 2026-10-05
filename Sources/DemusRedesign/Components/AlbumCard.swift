@@ -63,6 +63,7 @@ public struct AlbumCard: View {
             .frame(width: size, alignment: .leading)
         }
         .frame(width: size)
+        .contentShape(Rectangle())
     }
     
     private var albumSubtitle: String {

@@ -211,6 +211,14 @@ public final class SearchService: @unchecked Sendable {
             
             // Check for Shelves or ItemSections
             let shelf = section["musicShelfRenderer"] as? [String: Any]
+            let shelfTitleRuns = (shelf?["title"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+            let shelfTitle = shelfTitleRuns.compactMap { $0["text"] as? String }.joined().lowercased()
+            
+            // Audio-only: ignore video shelves ("Videos", "Music videos", etc.)
+            if shelfTitle.contains("video") {
+                continue
+            }
+            
             let itemSec = section["itemSectionRenderer"] as? [String: Any]
             let items = (shelf?["contents"] as? [[String: Any]]) ?? (itemSec?["contents"] as? [[String: Any]]) ?? []
             
@@ -229,6 +237,11 @@ public final class SearchService: @unchecked Sendable {
                     let col1 = flexCols[1]["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any]
                     let runs1 = (col1?["text"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
                     subtitleText = runs1.compactMap { $0["text"] as? String }.joined(separator: " ").lowercased()
+                }
+                
+                // Reject video-only items
+                if subtitleText.hasPrefix("video") || subtitleText.contains("music video") || subtitleText.contains("shorts") {
+                    continue
                 }
                 
                 if pageType == "MUSIC_PAGE_TYPE_ARTIST" || (browseId?.hasPrefix("UC") == true) || subtitleText.contains("artist") {
@@ -308,13 +321,25 @@ public final class SearchService: @unchecked Sendable {
             return .album(album)
         }
         
-        // Song / Video card
+        // Song / Audio card (Sanitize out any "Video" text)
         let watch = cardNav?["watchEndpoint"] as? [String: Any]
         if let videoId = watch?["videoId"] as? String, !videoId.isEmpty {
+            var cleanArtist = subtitle
+            if cleanArtist.lowercased().hasPrefix("video • ") {
+                cleanArtist = String(cleanArtist.dropFirst(8))
+            } else if cleanArtist.lowercased().hasPrefix("music video • ") {
+                cleanArtist = String(cleanArtist.dropFirst(14))
+            } else if cleanArtist.lowercased().hasPrefix("song • ") {
+                cleanArtist = String(cleanArtist.dropFirst(7))
+            }
+            cleanArtist = cleanArtist.replacingOccurrences(of: "Video • ", with: "")
+                .replacingOccurrences(of: "Music Video • ", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            
             let song = Song(
                 id: videoId,
                 title: title,
-                artistName: subtitle,
+                artistName: cleanArtist.isEmpty ? "Artist" : cleanArtist,
                 artworkURL: artworkURL
             )
             return .song(song)
@@ -379,6 +404,12 @@ public final class SearchService: @unchecked Sendable {
                     let bId = browse?["browseId"] as? String
                     let pType = ((browse?["browseEndpointContextSupportedConfigs"] as? [String: Any])?["browseEndpointContextMusicConfig"] as? [String: Any])?["pageType"] as? String
                     
+                    let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
+                    if lower == "video" || lower == "music video" || lower == "ugc" || lower == "short" {
+                        // Never accept Video as artist name
+                        continue
+                    }
+                    
                     if pType == "MUSIC_PAGE_TYPE_ARTIST" || (bId?.hasPrefix("UC") == true) {
                         artist = text
                         artistId = bId ?? ""
@@ -387,7 +418,7 @@ public final class SearchService: @unchecked Sendable {
                         albumId = bId
                     } else if text.contains(":") {
                         duration = parseDuration(text)
-                    } else if artist == "Unknown Artist" && !text.trimmingCharacters(in: .whitespaces).isEmpty && text != "•" && text != "Song" {
+                    } else if artist == "Unknown Artist" && !text.trimmingCharacters(in: .whitespaces).isEmpty && text != "•" && text != "Song" && lower != "video" {
                         artist = text
                     }
                 }

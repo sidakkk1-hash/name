@@ -188,12 +188,12 @@ public final class PlayerEngine: @unchecked Sendable {
         
         logPlaybackDiagnostics(song: upgradedSong, event: "RESOLVING_STREAM")
         
-        // 10-12s Timeout Protection: UI must show actual error instead of infinite spinner
+        // 12s Timeout Protection: UI shows readable error and retry instead of infinite spinner
         loadingTimeoutTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 11 * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 12 * 1_000_000_000)
             if !Task.isCancelled {
                 if self.playbackState == .resolving || self.playbackState == .buffering || self.isLoading {
-                    print("[PlayerEngine] ⚠️ Playback timed out after 11 seconds for '\(upgradedSong.title)'")
+                    print("[PlayerEngine] ⚠️ Playback timed out after 12 seconds for '\(upgradedSong.title)'")
                     self.playbackState = .failed("Playback timed out. Tap to retry.")
                     self.isLoading = false
                     self.isPlaying = false
@@ -203,7 +203,7 @@ public final class PlayerEngine: @unchecked Sendable {
             }
         }
         
-        // Resolve stream and load native AVPlayer
+        // Resolve audio-only stream and load native AVPlayer
         Task { @MainActor in
             do {
                 let resolved = try await StreamResolutionService.shared.resolveStream(for: upgradedSong)
@@ -211,19 +211,9 @@ public final class PlayerEngine: @unchecked Sendable {
                 self.currentResolvedStreamURL = resolved.url
                 self.currentStreamHeaders = resolved.headers
                 
-                self.logPlaybackDiagnostics(
-                    song: upgradedSong,
-                    event: "STREAM_RESOLVED",
-                    streamURL: resolved.url,
-                    httpStatus: resolved.httpStatus,
-                    isExpiredOr403: false
-                )
-                
                 self.loadAndPlay(
-                    streamURL: resolved.url,
-                    expectedDuration: resolved.duration,
-                    for: upgradedSong,
-                    headers: resolved.headers
+                    resolved: resolved,
+                    for: upgradedSong
                 )
             } catch {
                 guard !Task.isCancelled else { return }
@@ -244,22 +234,32 @@ public final class PlayerEngine: @unchecked Sendable {
     
     // MARK: - Native AVPlayer Loading & Observation
     private func loadAndPlay(
-        streamURL: URL,
-        expectedDuration: TimeInterval,
-        for song: Song,
-        headers: [String: String] = [:]
+        resolved: StreamResolutionService.ResolvedStream,
+        for song: Song
     ) {
         cleanupItemObservers()
         self.playbackState = .buffering
         
+        let streamURL = resolved.url
         var assetOptions: [String: Any] = [:]
-        if !headers.isEmpty {
-            // "AVURLAssetHTTPHeaderFieldsKey" is passed as string literal key in AVFoundation
-            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+        if !resolved.headers.isEmpty {
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers
         }
         
         let asset = AVURLAsset(url: streamURL, options: assetOptions.isEmpty ? nil : assetOptions)
         let playerItem = AVPlayerItem(asset: asset)
+        
+        // Diagnostic log BEFORE giving URL to AVPlayer as required
+        logPlaybackDiagnostics(
+            song: song,
+            event: "BEFORE_AVPLAYER_PLAY",
+            streamURL: streamURL,
+            httpStatus: resolved.httpStatus,
+            mimeType: resolved.mimeType,
+            bitrate: resolved.bitrate,
+            contentLength: resolved.contentLength,
+            playerItem: playerItem
+        )
         
         if let existingPlayer = self.avPlayer {
             existingPlayer.replaceCurrentItem(with: playerItem)
@@ -271,7 +271,7 @@ public final class PlayerEngine: @unchecked Sendable {
             setupPlayerObservers(player: newPlayer)
         }
         
-        setupItemObservers(item: playerItem, expectedDuration: expectedDuration)
+        setupItemObservers(item: playerItem, expectedDuration: resolved.duration)
         
         // Begin loading and prefetching
         self.avPlayer?.play()
@@ -404,15 +404,21 @@ public final class PlayerEngine: @unchecked Sendable {
         event: String,
         streamURL: URL? = nil,
         httpStatus: Int? = nil,
+        mimeType: String? = nil,
+        bitrate: Int? = nil,
+        contentLength: String? = nil,
+        playerItem: AVPlayerItem? = nil,
         isExpiredOr403: Bool = false
     ) {
         let s = song ?? currentSong
         let title = s?.title ?? "Unknown"
         let videoId = s?.id ?? "None"
         let streamURLPresent = (streamURL != nil || s?.streamURL != nil || currentResolvedStreamURL != nil) ? "YES" : "NO"
+        let effectiveHost = (streamURL ?? currentResolvedStreamURL ?? s?.streamURL)?.host ?? "unknown"
         
+        let itemToInspect = playerItem ?? avPlayer?.currentItem
         let statusStr: String
-        if let item = avPlayer?.currentItem {
+        if let item = itemToInspect {
             switch item.status {
             case .unknown: statusStr = "unknown"
             case .readyToPlay: statusStr = "readyToPlay"
@@ -442,13 +448,16 @@ public final class PlayerEngine: @unchecked Sendable {
         [DIAGNOSTICS - \(event)]
         ├─ song title: \(title)
         ├─ videoId: \(videoId)
-        ├─ resolved stream URL present: \(streamURLPresent)
-        ├─ HTTP status of stream resolution: \(httpStatus.map(String.init) ?? "N/A")
+        ├─ selected mimeType: \(mimeType ?? "audio/mp4")
+        ├─ bitrate: \(bitrate.map(String.init) ?? "unknown")
+        ├─ contentLength: \(contentLength ?? "unknown")
+        ├─ stream URL host: \(effectiveHost)
         ├─ AVPlayerItem.status: \(statusStr)
-        ├─ AVPlayerItem.error: \(avPlayer?.currentItem?.error?.localizedDescription ?? "nil")
-        ├─ AVPlayer.timeControlStatus: \(timeControlStr)
+        ├─ AVPlayerItem.error: \(itemToInspect?.error?.localizedDescription ?? "none")
         ├─ AVPlayer.reasonForWaitingToPlay: \(waitingReason)
         ├─ duration: \(duration)s
+        ├─ resolved stream URL present: \(streamURLPresent)
+        ├─ HTTP status of stream resolution: \(httpStatus.map(String.init) ?? "N/A")
         ├─ stream URL expired / 403: \(isExpiredOr403 ? "YES" : "NO")
         └─ playbackState: \(playbackState)
         """)
@@ -456,6 +465,10 @@ public final class PlayerEngine: @unchecked Sendable {
     
     // MARK: - Playback Controls
     public func play() {
+        if case .failed = playbackState {
+            retryCurrentSong()
+            return
+        }
         if let p = avPlayer {
             p.play()
         } else if let song = currentSong {
@@ -470,6 +483,10 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     public func togglePlay() {
+        if case .failed = playbackState {
+            retryCurrentSong()
+            return
+        }
         if let p = avPlayer {
             if p.timeControlStatus == .playing {
                 p.pause()

@@ -137,14 +137,43 @@ public struct AppleMusicPlaybackControls: View {
     }
 }
 
-// MARK: - AppleMusicVolumeSlider
-/// Native-style volume slider with minimum and maximum speaker SF Symbols.
-public struct AppleMusicVolumeSlider: View {
-    @Binding public var volume: Double
+#if canImport(MediaPlayer)
+import MediaPlayer
+
+// MARK: - NativeSystemVolumeView
+/// Native MPVolumeView wrapped in UIViewRepresentable.
+/// Keeps on-screen slider synchronized 1:1 with hardware volume buttons,
+/// AirPods volume, and Control Center without using private APIs.
+public struct NativeSystemVolumeView: UIViewRepresentable {
+    public init() {}
     
-    public init(volume: Binding<Double>) {
-        self._volume = volume
+    public func makeUIView(context: Context) -> MPVolumeView {
+        let volumeView = MPVolumeView(frame: .zero)
+        volumeView.showsRouteButton = false // Route picker is managed separately
+        volumeView.showsVolumeSlider = true
+        
+        // Style inner slider to match Apple Music dark frosted glass theme
+        DispatchQueue.main.async {
+            for subview in volumeView.subviews {
+                if let slider = subview as? UISlider {
+                    slider.minimumTrackTintColor = UIColor.white.withAlphaComponent(0.85)
+                    slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.20)
+                    slider.thumbTintColor = UIColor.white
+                }
+            }
+        }
+        return volumeView
     }
+    
+    public func updateUIView(_ uiView: MPVolumeView, context: Context) {}
+}
+#endif
+
+// MARK: - AppleMusicVolumeSlider
+/// Native-style volume slider backed by MPVolumeView for system volume synchronization.
+public struct AppleMusicVolumeSlider: View {
+    public init() {}
+    public init(volume: Binding<Double>) {}
     
     public var body: some View {
         HStack(spacing: 14) {
@@ -152,8 +181,13 @@ public struct AppleMusicVolumeSlider: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.55))
             
-            Slider(value: $volume, in: 0...1)
+            #if canImport(MediaPlayer)
+            NativeSystemVolumeView()
+                .frame(height: 32)
+            #else
+            Slider(value: .constant(0.7), in: 0...1)
                 .tint(.white.opacity(0.85))
+            #endif
             
             Image(systemName: "speaker.wave.3.fill")
                 .font(.system(size: 12))

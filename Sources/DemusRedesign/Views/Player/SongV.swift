@@ -59,7 +59,7 @@ public struct SongV: View {
                         .padding(.top, 24)
                     
                     // Volume Slider
-                    AppleMusicVolumeSlider(volume: $player.volume)
+                    AppleMusicVolumeSlider()
                         .padding(.horizontal, 32)
                         .padding(.top, 28)
                     

@@ -48,6 +48,7 @@ public struct AlbumV: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
+            .allowsHitTesting(false)
             
             ScrollView {
                 VStack(spacing: 20) {
@@ -83,17 +84,18 @@ public struct AlbumV: View {
                             .padding(.horizontal, 24)
                         
                         // Tappable Artist Name -> Navigates to ArtistV
-                        NavigationLink {
-                            ArtistV(
-                                browseId: currentAlbum.artistId ?? "",
-                                initialArtist: Artist(id: currentAlbum.artistId ?? "", name: currentAlbum.artist)
-                            )
-                        } label: {
+                        if let aId = currentAlbum.artistId, !aId.isEmpty {
+                            NavigationLink(value: AppRoute.artist(aId)) {
+                                Text(currentAlbum.artist)
+                                    .font(.system(size: 19, weight: .semibold))
+                                    .foregroundStyle(AppleMusicTheme.accent)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
                             Text(currentAlbum.artist)
                                 .font(.system(size: 19, weight: .semibold))
                                 .foregroundStyle(AppleMusicTheme.accent)
                         }
-                        .buttonStyle(.plain)
                         
                         // Release Metadata
                         HStack(spacing: 5) {
@@ -286,6 +288,16 @@ public struct AlbumV: View {
                             .clipShape(Circle())
                     }
                 }
+            }
+        }
+        .navigationDestination(for: AppRoute.self) { route in
+            switch route {
+            case .artist(let aBrowseId):
+                ArtistV(browseId: aBrowseId)
+            case .album(let albBrowseId):
+                AlbumV(browseId: albBrowseId)
+            case .playlist(let plId):
+                PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
             }
         }
         .task {

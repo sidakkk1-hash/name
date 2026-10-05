@@ -152,6 +152,16 @@ public struct PlaylistDetailV: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: AppRoute.self) { route in
+            switch route {
+            case .artist(let aBrowseId):
+                ArtistV(browseId: aBrowseId)
+            case .album(let albBrowseId):
+                AlbumV(browseId: albBrowseId)
+            case .playlist(let plId):
+                PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
+            }
+        }
         .onAppear {
             if let updated = LibraryRepository.shared.playlists.first(where: { $0.id == playlist.id }) {
                 self.currentPlaylist = updated

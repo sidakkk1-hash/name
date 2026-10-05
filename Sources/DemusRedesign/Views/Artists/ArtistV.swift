@@ -2,13 +2,13 @@ import SwiftUI
 
 // MARK: - ArtistV (1:1 Apple Music Artist Experience)
 /// Native Apple Music artist profile view featuring:
-/// - Full edge-to-edge hero image with bottom blur gradient
+/// - Edge-to-edge hero portrait with bottom blur gradient
 /// - Prominent artist name
 /// - Action buttons: Info (bio), Large White Play button, Favorite star
 /// - "Latest Release" glass banner
 /// - "Top Songs" section with direct tap-to-play
-/// - "Albums" and "Singles & EPs" carousels
-/// - "Fans Might Also Like" / Similar artists carousel
+/// - "Albums" and "Singles & EPs" horizontal carousels (fixed card widths)
+/// - "Fans Might Also Like" similar artists carousel
 public struct ArtistV: View {
     public let browseId: String
     public let initialArtist: Artist?
@@ -32,13 +32,13 @@ public struct ArtistV: View {
     }
     
     public var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 24) {
                 // 1. Edge-to-Edge Hero Header
                 ZStack(alignment: .bottom) {
                     // Hero Image
                     heroImageView
-                        .frame(height: 390)
+                        .frame(height: 380)
                         .frame(maxWidth: .infinity)
                         .clipped()
                     
@@ -46,13 +46,14 @@ public struct ArtistV: View {
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.15), location: 0.4),
-                            .init(color: .black.opacity(0.65), location: 0.75),
+                            .init(color: .black.opacity(0.20), location: 0.4),
+                            .init(color: .black.opacity(0.70), location: 0.75),
                             .init(color: AppleMusicTheme.systemBackground, location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
+                    .allowsHitTesting(false)
                     
                     // Artist Name & Action Controls
                     VStack(spacing: 16) {
@@ -83,6 +84,7 @@ public struct ArtistV: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Circle())
                             
                             // Dominant Play Button (Large White Circle)
                             Button {
@@ -106,6 +108,7 @@ public struct ArtistV: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Circle())
                             
                             // Favorite Star Button
                             Button {
@@ -125,6 +128,7 @@ public struct ArtistV: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Circle())
                         }
                     }
                     .padding(.bottom, 14)
@@ -137,12 +141,10 @@ public struct ArtistV: View {
                         .padding(.vertical, 20)
                 }
                 
-                // 2. Latest Release Card (Reference Image 1)
+                // 2. Latest Release Card
                 if let latest = currentArtist.latestRelease {
                     VStack(alignment: .leading, spacing: 10) {
-                        NavigationLink {
-                            AlbumV(browseId: latest.id, initialAlbum: latest)
-                        } label: {
+                        NavigationLink(value: AppRoute.album(latest.id)) {
                             HStack(spacing: 14) {
                                 // Thumbnail
                                 ZStack {
@@ -177,20 +179,9 @@ public struct ArtistV: View {
                                 
                                 Spacer()
                                 
-                                // Plus / Add Button
-                                Button {
-                                    #if canImport(UIKit)
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    #endif
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(AppleMusicTheme.label)
-                                        .frame(width: 34, height: 34)
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(Circle())
-                                }
-                                .buttonStyle(.plain)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             }
                             .padding(14)
                             .background(
@@ -210,10 +201,6 @@ public struct ArtistV: View {
                             Text("Top Songs")
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(AppleMusicTheme.label)
-                            
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             
                             Spacer()
                         }
@@ -241,10 +228,6 @@ public struct ArtistV: View {
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(AppleMusicTheme.label)
                             
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                            
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -252,12 +235,8 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
                                 ForEach(currentArtist.albums) { album in
-                                    NavigationLink {
-                                        AlbumV(browseId: album.id, initialAlbum: album)
-                                    } label: {
-                                        AlbumCard(album: album, size: 155) {
-                                            // NavigationLink handles navigation
-                                        }
+                                    NavigationLink(value: AppRoute.album(album.id)) {
+                                        AlbumCard(album: album, size: 155)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -275,10 +254,6 @@ public struct ArtistV: View {
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(AppleMusicTheme.label)
                             
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                            
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -286,12 +261,8 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
                                 ForEach(currentArtist.singles) { single in
-                                    NavigationLink {
-                                        AlbumV(browseId: single.id, initialAlbum: single)
-                                    } label: {
-                                        AlbumCard(album: single, size: 145) {
-                                            // NavigationLink handles navigation
-                                        }
+                                    NavigationLink(value: AppRoute.album(single.id)) {
+                                        AlbumCard(album: single, size: 145)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -309,10 +280,6 @@ public struct ArtistV: View {
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(AppleMusicTheme.label)
                             
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                            
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -320,12 +287,8 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
                                 ForEach(currentArtist.relatedArtists) { related in
-                                    NavigationLink {
-                                        ArtistV(browseId: related.id, initialArtist: related)
-                                    } label: {
-                                        ArtistCard(artist: related, diameter: 120) {
-                                            // NavigationLink handles navigation
-                                        }
+                                    NavigationLink(value: AppRoute.artist(related.id)) {
+                                        ArtistCard(artist: related, diameter: 120)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -338,8 +301,19 @@ public struct ArtistV: View {
                 Spacer(minLength: 110) // Room for CompactPlayer
             }
         }
+        .frame(maxWidth: .infinity)
         .ignoresSafeArea(edges: .top)
         .navigationBarBackButtonHidden(true)
+        .navigationDestination(for: AppRoute.self) { route in
+            switch route {
+            case .artist(let aBrowseId):
+                ArtistV(browseId: aBrowseId)
+            case .album(let albBrowseId):
+                AlbumV(browseId: albBrowseId)
+            case .playlist(let plId):
+                PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
+            }
+        }
         .toolbar {
             // Circular Back Button on top left
             ToolbarItem(placement: .topBarLeading) {
@@ -356,40 +330,26 @@ public struct ArtistV: View {
                 .buttonStyle(.plain)
             }
             
-            // Share and More on top right
+            // Top right action ellipsis
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
+                Menu {
                     ShareLink(item: "Check out \(currentArtist.name) on Demus!") {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
+                        Label("Share Artist...", systemImage: "square.and.arrow.up")
                     }
-                    
-                    Menu {
+                    if let firstSong = currentArtist.topSongs.first {
                         Button {
-                            isFavorite.toggle()
+                            player.playNext(firstSong)
                         } label: {
-                            Label(isFavorite ? "Unfavorite Artist" : "Favorite Artist", systemImage: isFavorite ? "star.fill" : "star")
+                            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                         }
-                        
-                        if let firstSong = currentArtist.topSongs.first {
-                            Button {
-                                player.playNext(firstSong)
-                            } label: {
-                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
                     }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
                 }
             }
         }
@@ -411,11 +371,17 @@ public struct ArtistV: View {
                 img
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(height: 380)
+                    .clipped()
             } placeholder: {
                 heroPlaceholder
             }
+            .frame(height: 380)
+            .clipped()
         } else {
             heroPlaceholder
+                .frame(height: 380)
+                .clipped()
         }
     }
     
@@ -430,6 +396,7 @@ public struct ArtistV: View {
                 .font(.system(size: 80))
                 .foregroundStyle(.white.opacity(0.3))
         }
+        .allowsHitTesting(false)
     }
     
     // MARK: - Artist Bio Sheet

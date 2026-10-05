@@ -63,6 +63,7 @@ public struct ArtistCard: View {
             .frame(width: diameter)
         }
         .frame(width: diameter)
+        .contentShape(Rectangle())
     }
     
     private var artistPlaceholder: some View {

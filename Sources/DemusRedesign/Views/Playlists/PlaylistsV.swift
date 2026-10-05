@@ -109,6 +109,16 @@ public struct PlaylistsV: View {
                 }
             }
             .navigationTitle("Playlists")
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .artist(let aBrowseId):
+                    ArtistV(browseId: aBrowseId)
+                case .album(let albBrowseId):
+                    AlbumV(browseId: albBrowseId)
+                case .playlist(let plId):
+                    PlaylistDetailV(playlist: Playlist(id: plId, title: "Playlist"))
+                }
+            }
             .onAppear {
                 self.playlists = LibraryRepository.shared.playlists
             }
