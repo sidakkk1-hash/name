@@ -75,18 +75,13 @@ public struct MiniPlayer: View {
                     HStack(spacing: 12) {
                         // Artwork Left
                         ZStack {
-                            if let url = ImageHelper.highResArtworkURL(from: currentSong.artworkURL, videoId: currentSong.id) {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                    case .failure, .empty:
-                                        thumbnailPlaceholder
-                                    @unknown default:
-                                        thumbnailPlaceholder
-                                    }
+                            if let url = ImageHelper.highResArtworkURL(from: currentSong.artworkURL, videoId: currentSong.id, resolution: .thumbnail) {
+                                CachedAsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    thumbnailPlaceholder
                                 }
                             } else {
                                 thumbnailPlaceholder

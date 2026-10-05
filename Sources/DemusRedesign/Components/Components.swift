@@ -34,18 +34,13 @@ public struct SongThumbnailV: View {
     
     public var body: some View {
         ZStack {
-            if let url = song.artworkURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure, .empty:
-                        fallbackPlaceholder
-                    @unknown default:
-                        fallbackPlaceholder
-                    }
+            if let rawUrl = song.artworkURL, let url = ImageHelper.highResArtworkURL(from: rawUrl, videoId: song.id, resolution: .thumbnail) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    fallbackPlaceholder
                 }
             } else {
                 fallbackPlaceholder

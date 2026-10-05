@@ -19,18 +19,13 @@ public struct NowPlayingArtwork: View {
         let artworkSize = min(targetWidth * 0.80, 360)
         
         ZStack {
-            if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure, .empty:
-                        defaultArtworkPlaceholder(size: artworkSize)
-                    @unknown default:
-                        defaultArtworkPlaceholder(size: artworkSize)
-                    }
+            if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id, resolution: .full) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    defaultArtworkPlaceholder(size: artworkSize)
                 }
             } else {
                 defaultArtworkPlaceholder(size: artworkSize)

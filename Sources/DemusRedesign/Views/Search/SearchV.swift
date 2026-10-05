@@ -91,6 +91,41 @@ public struct SearchV: View {
                     } else {
                         // Live Search Results
                         VStack(alignment: .leading, spacing: 20) {
+                            // Quick Clear & Query Indicator
+                            HStack {
+                                Text("Results for \"\(searchVM.query)\"")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(AppleMusicTheme.label)
+                                    .lineLimit(1)
+                                
+                                Spacer()
+                                
+                                Button {
+                                    #if canImport(UIKit)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    #endif
+                                    searchVM.query = ""
+                                    searchVM.searchResults = []
+                                    searchVM.matchedAlbums = []
+                                    searchVM.matchedArtists = []
+                                    searchVM.suggestions = []
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 14))
+                                        Text("Clear")
+                                            .font(.system(size: 13, weight: .semibold))
+                                    }
+                                    .foregroundStyle(AppleMusicTheme.accent)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(AppleMusicTheme.accent.opacity(0.12))
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 16)
+                            
                             // Matching Songs
                             if !searchVM.searchResults.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {
@@ -210,6 +245,23 @@ public struct SearchV: View {
             .onChange(of: searchVM.query) { _, _ in
                 searchVM.fetchSuggestions()
                 searchVM.performSearch()
+            }
+            .toolbar {
+                if !searchVM.query.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Cancel") {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            searchVM.query = ""
+                            searchVM.searchResults = []
+                            searchVM.matchedAlbums = []
+                            searchVM.matchedArtists = []
+                            searchVM.suggestions = []
+                        }
+                        .foregroundStyle(AppleMusicTheme.accent)
+                    }
+                }
             }
         }
     }

@@ -221,6 +221,10 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
             if (player && player.seekTo) { player.seekTo(sec, true); }
         }
 
+        function setVolume(val) {
+            if (player && player.setVolume) { player.setVolume(val); }
+        }
+
         setInterval(function() {
             if (player && isReady && player.getPlayerState && player.getPlayerState() === 1) {
                 var cur = player.getCurrentTime() || 0;
@@ -258,6 +262,13 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     
     public func seek(to seconds: TimeInterval) {
         let js = "seekTo(\(seconds));"
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+    
+    public func setVolume(_ volume: Double) {
+        let clamped = max(0, min(volume, 1.0))
+        let intVol = Int(clamped * 100)
+        let js = "setVolume(\(intVol));"
         webView?.evaluateJavaScript(js, completionHandler: nil)
     }
     

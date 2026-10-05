@@ -48,18 +48,13 @@ public struct PlaylistsV: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     // Square Artwork
                                     ZStack {
-                                        if let url = playlist.artworkURL {
-                                            AsyncImage(url: url) { phase in
-                                                switch phase {
-                                                case .success(let image):
-                                                    image
-                                                        .resizable()
-                                                        .aspectRatio(contentMode: .fill)
-                                                case .failure, .empty:
-                                                    placeholderArtwork
-                                                @unknown default:
-                                                    placeholderArtwork
-                                                }
+                                        if let rawUrl = playlist.artworkURL, let url = ImageHelper.highResArtworkURL(from: rawUrl, resolution: .card) {
+                                            CachedAsyncImage(url: url) { image in
+                                                image
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                            } placeholder: {
+                                                placeholderArtwork
                                             }
                                         } else {
                                             placeholderArtwork

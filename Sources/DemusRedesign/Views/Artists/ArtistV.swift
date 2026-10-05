@@ -19,18 +19,13 @@ public struct ArtistV: View {
             VStack(spacing: 24) {
                 // Large Hero Artist Banner
                 ZStack(alignment: .bottomLeading) {
-                    if let url = currentArtist.artworkURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                heroPlaceholder
-                            @unknown default:
-                                heroPlaceholder
-                            }
+                    if let rawUrl = currentArtist.artworkURL, let url = ImageHelper.highResArtworkURL(from: rawUrl, resolution: .card) {
+                        CachedAsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            heroPlaceholder
                         }
                     } else {
                         heroPlaceholder

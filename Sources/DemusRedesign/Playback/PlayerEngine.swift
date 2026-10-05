@@ -22,6 +22,14 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
+    public var volume: Double = 1.0 {
+        didSet {
+            let v = volume
+            Task { @MainActor in
+                WKAudioEngine.shared.setVolume(v)
+            }
+        }
+    }
     
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -162,6 +170,50 @@ public final class PlayerEngine: @unchecked Sendable {
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music
         fetchRadioQueue(for: currentVideoId)
+        
+        // Fast background lyrics pre-fetching
+        let songForLyrics = upgradedSong
+        Task {
+            await LyricsService.shared.preloadLyrics(song: songForLyrics)
+        }
+    }
+    
+    // MARK: - Smart Queue Skipping
+    /// Skips to an upcoming queue song smoothly without blowing away the existing queue.
+    public func skipToQueueItem(_ song: Song) {
+        guard let targetIdx = queue.firstIndex(where: { $0.id == song.id }) else {
+            play(song: song)
+            return
+        }
+        
+        // Move preceding tracks to history
+        if targetIdx > 0 {
+            let preceding = Array(queue.prefix(targetIdx))
+            history.append(contentsOf: preceding)
+            queue.removeFirst(targetIdx)
+        }
+        
+        guard let target = queue.first else { return }
+        
+        self.currentSong = target
+        self.currentTime = 0
+        self.duration = target.duration > 0 ? target.duration : 180
+        self.isPlaying = false
+        self.isLoading = true
+        self.errorMessage = nil
+        
+        LibraryRepository.shared.addHistory(target)
+        updateLockScreen()
+        
+        let currentVideoId = target.id
+        Task { @MainActor in
+            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+        }
+        
+        let songForLyrics = target
+        Task {
+            await LyricsService.shared.preloadLyrics(song: songForLyrics)
+        }
     }
     
     private func fetchRadioQueue(for videoId: String) {

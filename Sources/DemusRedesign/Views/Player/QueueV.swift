@@ -74,7 +74,7 @@ public struct QueueV: View {
                     } else {
                         ForEach(upcoming) { song in
                             SongRow(song: song, isCurrentPlaying: false) {
-                                player.play(song: song)
+                                player.skipToQueueItem(song)
                             }
                         }
                         .onDelete { indexSet in

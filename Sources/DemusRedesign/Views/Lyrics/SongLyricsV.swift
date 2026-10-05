@@ -153,7 +153,8 @@ public struct SongLyricsV: View {
             let lines = await LyricsService.shared.fetchLyrics(
                 trackName: song.title,
                 artistName: song.artistName,
-                duration: Int(song.duration)
+                duration: Int(song.duration),
+                videoId: song.id
             )
             self.lyricLines = lines
             self.isLoading = false

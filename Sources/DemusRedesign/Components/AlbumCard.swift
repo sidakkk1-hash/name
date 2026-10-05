@@ -19,18 +19,13 @@ public struct AlbumCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack {
-                    if let url = album.artworkURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                albumPlaceholder
-                            @unknown default:
-                                albumPlaceholder
-                            }
+                    if let rawUrl = album.artworkURL, let url = ImageHelper.highResArtworkURL(from: rawUrl, resolution: .card) {
+                        CachedAsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            albumPlaceholder
                         }
                     } else {
                         albumPlaceholder

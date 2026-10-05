@@ -28,18 +28,13 @@ public struct SongRow: View {
             HStack(spacing: 14) {
                 // Artwork Thumbnail
                 ZStack {
-                    if let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                placeholderImage
-                            @unknown default:
-                                placeholderImage
-                            }
+                    if let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id, resolution: .thumbnail) {
+                        CachedAsyncImage(url: url) { img in
+                            img
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            placeholderImage
                         }
                     } else {
                         placeholderImage

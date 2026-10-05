@@ -153,8 +153,28 @@ public struct AppleMusicVolumeSlider: View {
     }
 }
 
+#if canImport(AVKit)
+import AVKit
+
+// MARK: - AirPlayRoutePickerView
+public struct AirPlayRoutePickerView: UIViewRepresentable {
+    public init() {}
+    
+    public func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = UIColor.white.withAlphaComponent(0.85)
+        picker.activeTintColor = UIColor(AppleMusicTheme.accent)
+        picker.prioritizesVideoDevices = false
+        picker.backgroundColor = .clear
+        return picker
+    }
+    
+    public func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+#endif
+
 // MARK: - AppleMusicSecondaryToolbar
-/// Bottom auxiliary toolbar: Lyrics, AirPlay, Queue.
+/// Bottom auxiliary toolbar: Lyrics, AirPlay / Bluetooth, Queue.
 public struct AppleMusicSecondaryToolbar: View {
     @Bindable public var mainTVM: MainTVM
     @Bindable public var player: PlayerEngine
@@ -179,16 +199,16 @@ public struct AppleMusicSecondaryToolbar: View {
             
             Spacer()
             
-            // AirPlay Button
-            Button {
-                // AirPlay route picker action
-            } label: {
-                Image(systemName: "airplayaudio")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.appleMusicPlayButton)
+            // AirPlay & Bluetooth Device Picker Button
+            #if canImport(AVKit)
+            AirPlayRoutePickerView()
+                .frame(width: 44, height: 44)
+            #else
+            Image(systemName: "airplayaudio")
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(width: 44, height: 44)
+            #endif
             
             Spacer()
             

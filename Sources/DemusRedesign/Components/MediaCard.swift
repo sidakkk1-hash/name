@@ -30,18 +30,13 @@ public struct MediaCard: View {
             VStack(alignment: .leading, spacing: 7) {
                 // Square Artwork
                 ZStack {
-                    if let url = artworkURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                placeholderImage
-                            @unknown default:
-                                placeholderImage
-                            }
+                    if let rawUrl = artworkURL, let url = ImageHelper.highResArtworkURL(from: rawUrl, resolution: .card) {
+                        CachedAsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            placeholderImage
                         }
                     } else {
                         placeholderImage

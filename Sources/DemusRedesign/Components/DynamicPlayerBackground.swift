@@ -2,13 +2,14 @@ import SwiftUI
 
 // MARK: - DynamicPlayerBackground
 /// Creates a live, artwork-driven ambient background matching modern Apple Music.
-/// It uses the current song's artwork, scaled to fill, heavily blurred (45-70pt),
-/// overlaid with a dark gradient toward the bottom to guarantee high-contrast readable controls.
-/// Automatically crossfades with a 0.45s animation on song change.
+/// Combines heavy blurs, fluid breathing motion, satin frosted material,
+/// and deep gradient overlays to guarantee high-contrast readability.
 public struct DynamicPlayerBackground: View {
     public let artworkURL: URL?
     public var blurRadius: CGFloat = 65.0
     public var darkOverlayOpacity: Double = 0.45
+    
+    @State private var isBreathing: Bool = false
     
     public init(artworkURL: URL?, blurRadius: CGFloat = 65.0, darkOverlayOpacity: Double = 0.45) {
         self.artworkURL = artworkURL
@@ -22,34 +23,35 @@ public struct DynamicPlayerBackground: View {
                 // Base background color
                 Color.black
                 
-                // Blurred Artwork Layer with smooth crossfade
-                if let url = ImageHelper.highResArtworkURL(from: artworkURL) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width * 1.25, height: proxy.size.height * 1.25)
-                                .clipped()
-                                .blur(radius: blurRadius, opaque: true)
-                                .saturation(1.25) // Vibrant Apple Music color pop
-                                .transition(.opacity.animation(AppleMusicTheme.smoothCrossfade))
-                        case .failure, .empty:
-                            fallbackGradient
-                        @unknown default:
-                            fallbackGradient
-                        }
+                // Living Blurred Artwork Mesh Layer
+                if let url = ImageHelper.highResArtworkURL(from: artworkURL, resolution: .card) {
+                    CachedAsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: proxy.size.width * 1.35, height: proxy.size.height * 1.35)
+                            .clipped()
+                            .blur(radius: blurRadius, opaque: true)
+                            .saturation(1.3) // Vibrant Apple Music color pop
+                            .scaleEffect(isBreathing ? 1.08 : 1.0)
+                            .rotationEffect(.degrees(isBreathing ? 3 : -3))
+                            .animation(.easeInOut(duration: 8.0).repeatForever(autoreverses: true), value: isBreathing)
+                    } placeholder: {
+                        fallbackGradient
                     }
-                    .id(url.absoluteString) // Triggers transition when artwork changes
+                    .id(url.absoluteString)
                 } else {
                     fallbackGradient
                 }
                 
+                // Frosted Liquid Glass Satin Veil
+                Rectangle()
+                    .fill(.ultraThinMaterial.opacity(0.35))
+                
                 // Apple Music Signature Dynamic Gradient Overlays
                 // 1. Top subtle vignette for status bar / grabber
                 LinearGradient(
-                    colors: [Color.black.opacity(0.35), Color.clear],
+                    colors: [Color.black.opacity(0.40), Color.clear],
                     startPoint: .top,
                     endPoint: .center
                 )
@@ -57,9 +59,9 @@ public struct DynamicPlayerBackground: View {
                 // 2. Bottom deep gradient for maximum readability of white playback controls & scrubber
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.25),
-                        .init(color: Color.black.opacity(0.35), location: 0.6),
-                        .init(color: Color.black.opacity(0.75), location: 1.0)
+                        .init(color: .clear, location: 0.20),
+                        .init(color: Color.black.opacity(0.35), location: 0.55),
+                        .init(color: Color.black.opacity(0.80), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -68,13 +70,16 @@ public struct DynamicPlayerBackground: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .ignoresSafeArea()
+        .onAppear {
+            isBreathing = true
+        }
     }
     
     private var fallbackGradient: some View {
         LinearGradient(
             colors: [
-                Color(red: 35 / 255.0, green: 20 / 255.0, blue: 38 / 255.0),
-                Color(red: 18 / 255.0, green: 15 / 255.0, blue: 25 / 255.0),
+                Color(red: 35 / 255.0, green: 20 / 255.0, blue: 45 / 255.0),
+                Color(red: 18 / 255.0, green: 15 / 255.0, blue: 28 / 255.0),
                 Color.black
             ],
             startPoint: .topLeading,
