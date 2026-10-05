@@ -660,7 +660,7 @@ public final class BrowseService: @unchecked Sendable {
                     var trackArtist = "Artist"
                     var trackArtistId = "artist-yt"
                     var videoId = ""
-                    var duration: TimeInterval = 0
+                    let duration: TimeInterval = 0
                     
                     if let flexCols = r["flexColumns"] as? [[String: Any]], !flexCols.isEmpty {
                         let col0 = flexCols[0]["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any]

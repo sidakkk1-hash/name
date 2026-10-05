@@ -254,8 +254,8 @@ public final class PlayerEngine: @unchecked Sendable {
         
         var assetOptions: [String: Any] = [:]
         if !headers.isEmpty {
-            // Use the correct AVFoundation constant for HTTP headers
-            assetOptions[AVURLAssetHTTPHeaderFieldsKey] = headers
+            // "AVURLAssetHTTPHeaderFieldsKey" is passed as string literal key in AVFoundation
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
         }
         
         let asset = AVURLAsset(url: streamURL, options: assetOptions.isEmpty ? nil : assetOptions)
@@ -665,11 +665,6 @@ public final class PlayerEngine: @unchecked Sendable {
             NotificationCenter.default.removeObserver(endObs)
             itemEndObserver = nil
         }
-    }
-    
-    private func cancelLoadingTimeout() {
-        loadingTimeoutTask?.cancel()
-        loadingTimeoutTask = nil
     }
     
     private func cleanupPlayer() {
