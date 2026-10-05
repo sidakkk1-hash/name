@@ -41,10 +41,11 @@ public enum Endpoints {
     
     // YouTube Music Filter Parameters
     public enum SearchFilter: String {
-        case songs = "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
-        case videos = "EgWKAQIgAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
-        case albums = "EgWKAQIYAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
-        case artists = "EgWKAQIQAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
-        case playlists = "EgWKAQIoAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
+        case songs = "EgWKAQIIAWoSEAUQCRADEAQQChAOEBAQFRAR"
+        case videos = "EgWKAQIQAWoSEAUQCRADEAQQChAOEBAQFRAR"
+        case albums = "EgWKAQIYAWoSEAUQCRADEAQQChAOEBAQFRAR"
+        case artists = "EgWKAQIgAWoSEAUQCRADEAQQChAOEBAQFRAR"
+        case playlists = "EgeKAQQoAEABahIQBRAJEAMQBBAKEA4QEBAVEBE%3D"
+        case featuredPlaylists = "EgeKAQQoADgBahIQBRAJEAMQBBAKEA4QEBAVEBE%3D"
     }
 }

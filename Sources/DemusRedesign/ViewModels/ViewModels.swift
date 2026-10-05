@@ -46,15 +46,29 @@ public final class MainTVM: @unchecked Sendable {
     public init() {}
 }
 
+// MARK: - SearchSectionFilter
+public enum SearchSectionFilter: String, CaseIterable, Identifiable, Sendable {
+    case topResults = "Top Results"
+    case songs = "Songs"
+    case albums = "Albums"
+    case artists = "Artists"
+    case playlists = "Playlists"
+    
+    public var id: String { rawValue }
+}
+
 // MARK: - SearchVM (Matches Demus Demus8SearchVM)
 @Observable
 public final class SearchVM: @unchecked Sendable {
     public static let shared = SearchVM()
     
     public var query: String = ""
+    public var selectedSection: SearchSectionFilter = .topResults
+    public var topResults: [TopResultItem] = []
     public var searchResults: [Song] = []
     public var matchedAlbums: [Album] = []
     public var matchedArtists: [Artist] = []
+    public var matchedPlaylists: [Playlist] = []
     public var searchHistory: [String] {
         LibraryRepository.shared.searchHistory
     }
@@ -73,27 +87,25 @@ public final class SearchVM: @unchecked Sendable {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !q.isEmpty else {
-            searchResults = []
-            matchedAlbums = []
-            matchedArtists = []
-            suggestions = []
-            isSearching = false
+            clearResults()
             return
         }
         
         isSearching = true
         
         searchTask = Task { @MainActor in
-            // Small debounce
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Fast debounce
+            try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
             
             let response = await SearchService.shared.searchAll(query: q)
             guard !Task.isCancelled else { return }
             
+            self.topResults = response.topResults
             self.searchResults = response.songs
             self.matchedAlbums = response.albums
             self.matchedArtists = response.artists
+            self.matchedPlaylists = response.playlists
             self.isSearching = false
             
             // Persist to real search history if songs returned
@@ -117,6 +129,16 @@ public final class SearchVM: @unchecked Sendable {
                 self.suggestions = list
             }
         }
+    }
+    
+    public func clearResults() {
+        searchResults = []
+        matchedAlbums = []
+        matchedArtists = []
+        matchedPlaylists = []
+        topResults = []
+        suggestions = []
+        isSearching = false
     }
 }
 

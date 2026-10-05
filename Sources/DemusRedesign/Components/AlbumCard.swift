@@ -45,8 +45,8 @@ public struct AlbumCard: View {
                         .foregroundStyle(AppleMusicTheme.label)
                         .lineLimit(1)
                     
-                    Text(album.artist)
-                        .font(.system(size: 13, weight: .regular))
+                    Text(albumSubtitle)
+                        .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(AppleMusicTheme.secondaryLabel)
                         .lineLimit(1)
                 }
@@ -54,6 +54,17 @@ public struct AlbumCard: View {
             }
         }
         .buttonStyle(.appleMusicCard)
+    }
+    
+    private var albumSubtitle: String {
+        var parts: [String] = []
+        if !album.artist.isEmpty {
+            parts.append(album.artist)
+        }
+        if let y = album.year ?? album.releaseDate, !y.isEmpty {
+            parts.append(y)
+        }
+        return parts.joined(separator: " • ")
     }
     
     private var albumPlaceholder: some View {

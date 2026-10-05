@@ -39,11 +39,18 @@ public struct ArtistCard: View {
                 )
                 .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
                 
-                Text(artist.name)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(AppleMusicTheme.label)
-                    .lineLimit(1)
-                    .frame(width: diameter)
+                VStack(spacing: 2) {
+                    Text(artist.name)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppleMusicTheme.label)
+                        .lineLimit(1)
+                    
+                    Text(artist.subscribers ?? "Artist")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        .lineLimit(1)
+                }
+                .frame(width: diameter)
             }
         }
         .buttonStyle(.appleMusicCard)
