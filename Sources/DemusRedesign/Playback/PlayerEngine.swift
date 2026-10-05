@@ -207,11 +207,6 @@ public final class PlayerEngine: @unchecked Sendable {
         
         updateLockScreen()
         
-        let currentVideoId = upgradedSong.id
-        
-        #if canImport(AVFAudio)
-        let diagSession = AVAudioSession.sharedInstance()
-        let diagCat = diagSession.category.rawValue
         let songToPlay = upgradedSong
         let currentVideoId = upgradedSong.id
         
