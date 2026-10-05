@@ -48,7 +48,7 @@ public struct ArtistV: View {
                             .init(color: .clear, location: 0.0),
                             .init(color: .black.opacity(0.15), location: 0.4),
                             .init(color: .black.opacity(0.65), location: 0.75),
-                            .init(color: AppleMusicTheme.background, location: 1.0)
+                            .init(color: AppleMusicTheme.systemBackground, location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom

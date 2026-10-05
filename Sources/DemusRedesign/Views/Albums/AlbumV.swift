@@ -42,7 +42,7 @@ public struct AlbumV: View {
                 stops: [
                     .init(color: ambientColor.opacity(0.85), location: 0.0),
                     .init(color: ambientColor.opacity(0.35), location: 0.45),
-                    .init(color: AppleMusicTheme.background, location: 0.85)
+                    .init(color: AppleMusicTheme.systemBackground, location: 0.85)
                 ],
                 startPoint: .top,
                 endPoint: .bottom

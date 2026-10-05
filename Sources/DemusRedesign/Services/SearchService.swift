@@ -450,7 +450,7 @@ public final class SearchService: @unchecked Sendable {
                 for r in runs1 {
                     let text = r["text"] as? String ?? ""
                     let nav = r["navigationEndpoint"] as? [String: Any]
-                    let browse = nav["browseEndpoint"] as? [String: Any]
+                    let browse = nav?["browseEndpoint"] as? [String: Any]
                     let bId = browse?["browseId"] as? String
                     
                     if let bId = bId, bId.hasPrefix("UC") {
