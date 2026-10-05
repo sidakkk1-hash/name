@@ -4,14 +4,13 @@ import SwiftUI
 @preconcurrency import AVFoundation
 
 // MARK: - PlayerEngine
-/// Real playback engine powered by Demus's WebKit Embed Architecture (WKAudioEngine),
-/// providing 100% reliable background streaming, lock-screen controls, dynamic scrubbing,
-/// and queue orchestration without googlevideo 403 Forbidden interruptions.
+/// Production-grade native AVFoundation playback engine powering background audio,
+/// Lock Screen controls, Dynamic Island, Control Center, and seamless queue orchestration.
 @Observable
 public final class PlayerEngine: @unchecked Sendable {
     public static let shared = PlayerEngine()
     
-    // Playback state
+    // Playback state (authoritative source of truth)
     public var currentSong: Song?
     public var isPlaying: Bool = false
     public var isLoading: Bool = false
@@ -24,18 +23,17 @@ public final class PlayerEngine: @unchecked Sendable {
     public var errorMessage: String?
     public var volume: Double = 1.0 {
         didSet {
-            let v = volume
-            Task { @MainActor in
-                WKAudioEngine.shared.setVolume(v)
-            }
+            avPlayer?.volume = Float(volume)
         }
     }
     
-    // Playback state stability & rapid-tap debounce
-    private var userIntentPlaying: Bool = false
-    private var lastUserToggleTime: TimeInterval = 0
-    private var lastActionTime: TimeInterval = 0
-    
+    // Native AVFoundation Player
+    private var avPlayer: AVPlayer?
+    private var timeObserverToken: Any?
+    private var timeControlStatusObserver: NSKeyValueObservation?
+    private var itemStatusObserver: NSKeyValueObservation?
+    private var itemDurationObserver: NSKeyValueObservation?
+    private var itemEndObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     
@@ -43,29 +41,12 @@ public final class PlayerEngine: @unchecked Sendable {
         configureAudioSession()
         setupAudioObservers()
         restoreLastSession()
-        Task { @MainActor in
-            WKAudioEngine.shared.delegate = self
-        }
         NowPlayingManager.shared.setupRemoteCommands(player: self)
     }
     
     deinit {
+        cleanupPlayer()
         removeAudioObservers()
-    }
-    
-    private func restoreLastSession() {
-        if let data = UserDefaults.standard.data(forKey: "demus_last_song"),
-           let song = try? JSONDecoder().decode(Song.self, from: data) {
-            self.currentSong = song
-            self.duration = song.duration > 0 ? song.duration : 180
-            self.queue = [song]
-        }
-    }
-    
-    private func persistCurrentSession(song: Song) {
-        if let data = try? JSONEncoder().encode(song) {
-            UserDefaults.standard.set(data, forKey: "demus_last_song")
-        }
     }
     
     // MARK: - Audio Session Configuration
@@ -73,7 +54,11 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetoothA2DP]
+            )
             try session.setActive(true)
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
@@ -95,20 +80,12 @@ public final class PlayerEngine: @unchecked Sendable {
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             
             if type == .began {
-                Task { @MainActor in
-                    WKAudioEngine.shared.pause()
-                }
-                self.isPlaying = false
-                self.updateLockScreen()
+                self.pause()
             } else if type == .ended {
                 if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
-                        Task { @MainActor in
-                            WKAudioEngine.shared.play()
-                        }
-                        self.isPlaying = true
-                        self.updateLockScreen()
+                        self.play()
                     }
                 }
             }
@@ -124,13 +101,9 @@ public final class PlayerEngine: @unchecked Sendable {
                   let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
                   let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
             
-            // If headphones unplugged or Bluetooth disconnected, pause playback
+            // If headphones unplugged or Bluetooth/AirPods disconnected, pause playback
             if reason == .oldDeviceUnavailable {
-                Task { @MainActor in
-                    WKAudioEngine.shared.pause()
-                }
-                self.isPlaying = false
-                self.updateLockScreen()
+                self.pause()
             }
         }
         #endif
@@ -147,20 +120,31 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
-    // MARK: - Play Song with HD Artwork and Demus-Matched Engine
+    private func restoreLastSession() {
+        if let data = UserDefaults.standard.data(forKey: "demus_last_song"),
+           let song = try? JSONDecoder().decode(Song.self, from: data) {
+            self.currentSong = song
+            self.duration = song.duration > 0 ? song.duration : 180
+            self.queue = [song]
+        }
+    }
+    
+    private func persistCurrentSession(song: Song) {
+        if let data = try? JSONEncoder().encode(song) {
+            UserDefaults.standard.set(data, forKey: "demus_last_song")
+        }
+    }
+    
+    // MARK: - Play Song with HD Artwork & Native AVPlayer
     public func play(song: Song) {
-        // Upgrade artwork to crystal-clear Ultra HD
         let hdArtwork = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id)
         var upgradedSong = song
         upgradedSong.artworkURL = hdArtwork
         
-        if currentSong?.id == upgradedSong.id {
-            if !isPlaying {
-                Task { @MainActor in
-                    WKAudioEngine.shared.play()
-                }
-                isPlaying = true
-                updateLockScreen()
+        // If already playing this song, toggle or resume
+        if currentSong?.id == upgradedSong.id, let player = avPlayer {
+            if player.timeControlStatus != .playing {
+                player.play()
             }
             return
         }
@@ -170,132 +154,169 @@ public final class PlayerEngine: @unchecked Sendable {
         self.duration = upgradedSong.duration > 0 ? upgradedSong.duration : 180
         self.isPlaying = false
         self.isLoading = true
-        self.userIntentPlaying = true
-        let now = Date().timeIntervalSince1970
-        self.lastUserToggleTime = now
-        self.lastActionTime = now
         self.errorMessage = nil
         
-        // Controlled isolation: persistCurrentSession(song: upgradedSong)
-        
-        // Add to persistent library history
+        // Add to history & persistent queue
         LibraryRepository.shared.addHistory(upgradedSong)
-        
-        // Update Queue
         if !queue.contains(where: { $0.id == upgradedSong.id }) {
             queue.append(upgradedSong)
         }
+        persistCurrentSession(song: upgradedSong)
         
-        updateLockScreen()
+        // Update lock screen immediately
+        updateNowPlaying()
         
-        let currentVideoId = upgradedSong.id
-        
-        // Trigger Demus WebKit Audio Engine (Zero 403 Forbidden)
-        Task { @MainActor in
-            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
-        }
-        
-        // Auto-fetch algorithmic Up Next songs like YouTube Music
-        fetchRadioQueue(for: currentVideoId)
-        
-        // Fast background lyrics pre-fetching
+        // Preload lyrics & Up Next recommendations in background
         let songForLyrics = upgradedSong
         Task {
             await LyricsService.shared.preloadLyrics(song: songForLyrics)
         }
-    }
-    
-    // MARK: - Smart Queue Skipping
-    /// Skips to an upcoming queue song smoothly without blowing away the existing queue.
-    public func skipToQueueItem(_ song: Song) {
-        guard let targetIdx = queue.firstIndex(where: { $0.id == song.id }) else {
-            play(song: song)
-            return
-        }
+        fetchRadioQueue(for: upgradedSong.id)
         
-        // Move preceding tracks to history
-        if targetIdx > 0 {
-            let preceding = Array(queue.prefix(targetIdx))
-            history.append(contentsOf: preceding)
-            queue.removeFirst(targetIdx)
-        }
-        
-        guard let target = queue.first else { return }
-        
-        self.currentSong = target
-        self.currentTime = 0
-        self.duration = target.duration > 0 ? target.duration : 180
-        self.isPlaying = false
-        self.isLoading = true
-        self.userIntentPlaying = true
-        let now = Date().timeIntervalSince1970
-        self.lastUserToggleTime = now
-        self.lastActionTime = now
-        self.errorMessage = nil
-        
-        // Controlled isolation: persistCurrentSession(song: target)
-        LibraryRepository.shared.addHistory(target)
-        updateLockScreen()
-        
-        let currentVideoId = target.id
+        // Resolve stream and load native AVPlayer
         Task { @MainActor in
-            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+            do {
+                let resolved = try await StreamResolutionService.shared.resolveStream(for: upgradedSong)
+                self.loadAndPlay(streamURL: resolved.url, expectedDuration: resolved.duration, for: upgradedSong)
+            } catch {
+                self.isLoading = false
+                self.isPlaying = false
+                self.errorMessage = "Stream resolution error: \(error.localizedDescription)"
+                print("[PlayerEngine] Stream resolution failed:", error)
+            }
+        }
+    }
+    
+    // MARK: - Native AVPlayer Loading & Observation
+    private func loadAndPlay(streamURL: URL, expectedDuration: TimeInterval, for song: Song) {
+        cleanupItemObservers()
+        
+        let asset = AVURLAsset(url: streamURL)
+        let playerItem = AVPlayerItem(asset: asset)
+        
+        if let existingPlayer = self.avPlayer {
+            existingPlayer.replaceCurrentItem(with: playerItem)
+        } else {
+            let newPlayer = AVPlayer(playerItem: playerItem)
+            newPlayer.automaticallyWaitsToMinimizeStalling = true
+            newPlayer.volume = Float(self.volume)
+            self.avPlayer = newPlayer
+            setupPlayerObservers(player: newPlayer)
         }
         
-        let songForLyrics = target
-        Task {
-            await LyricsService.shared.preloadLyrics(song: songForLyrics)
-        }
+        setupItemObservers(item: playerItem, expectedDuration: expectedDuration)
+        
+        self.avPlayer?.play()
+        updateNowPlaying()
     }
     
-    private func fetchRadioQueue(for videoId: String) {
-        Task {
-            let radioSongs = await RadioService.shared.fetchUpNext(videoId: videoId)
-            self.appendRadioSongs(radioSongs)
-        }
-    }
-    
-    private func appendRadioSongs(_ songs: [Song]) {
-        for song in songs {
-            if !queue.contains(where: { $0.id == song.id }) {
-                queue.append(song)
+    private func setupPlayerObservers(player: AVPlayer) {
+        // Single Source of Truth: observe player.timeControlStatus
+        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] p, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch p.timeControlStatus {
+                case .playing:
+                    self.isPlaying = true
+                    self.isLoading = false
+                case .waitingToPlayAtSpecifiedRate:
+                    self.isLoading = true
+                case .paused:
+                    self.isPlaying = false
+                    self.isLoading = false
+                @unknown default:
+                    break
+                }
+                self.updateNowPlaying()
             }
+        }
+        
+        // Periodic time observer for smooth scrubber & lock screen elapsed time
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self = self else { return }
+            let secs = time.seconds
+            if !secs.isNaN && secs >= 0 {
+                self.currentTime = secs
+                NowPlayingManager.shared.updatePlaybackProgress(
+                    currentTime: secs,
+                    duration: self.duration,
+                    isPlaying: self.isPlaying
+                )
+            }
+        }
+    }
+    
+    private func setupItemObservers(item: AVPlayerItem, expectedDuration: TimeInterval) {
+        // Item status readyToPlay / failed
+        itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] itm, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if itm.status == .readyToPlay {
+                    let itemDur = itm.duration.seconds
+                    if !itemDur.isNaN && itemDur > 0 {
+                        self.duration = itemDur
+                    } else if expectedDuration > 0 {
+                        self.duration = expectedDuration
+                    }
+                    self.updateNowPlaying()
+                } else if itm.status == .failed {
+                    self.isLoading = false
+                    self.isPlaying = false
+                    self.errorMessage = itm.error?.localizedDescription ?? "Playback error"
+                }
+            }
+        }
+        
+        // Item duration updates
+        itemDurationObserver = item.observe(\.duration, options: [.new]) { [weak self] itm, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let itemDur = itm.duration.seconds
+                if !itemDur.isNaN && itemDur > 0 {
+                    self.duration = itemDur
+                    self.updateNowPlaying()
+                }
+            }
+        }
+        
+        // Automatically play next song when current track ends
+        itemEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleSongDidEnd()
         }
     }
     
     // MARK: - Playback Controls
+    public func play() {
+        if let p = avPlayer {
+            p.play()
+        } else if let song = currentSong {
+            play(song: song)
+        } else if let first = queue.first {
+            play(song: first)
+        }
+    }
+    
+    public func pause() {
+        avPlayer?.pause()
+    }
+    
     public func togglePlay() {
-        let now = Date().timeIntervalSince1970
-        guard now - lastActionTime > 0.25 else { return } // 250ms rapid-tap debounce
-        lastActionTime = now
-        lastUserToggleTime = now
-        
-        #if canImport(UIKit)
-        Task { @MainActor in
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        }
-        #endif
-        
-        if isPlaying {
-            userIntentPlaying = false
-            self.isPlaying = false
-            self.isLoading = false
-            Task { @MainActor in
-                WKAudioEngine.shared.pause()
+        if let p = avPlayer {
+            if p.timeControlStatus == .playing {
+                p.pause()
+            } else {
+                p.play()
             }
-        } else {
-            userIntentPlaying = true
-            self.isPlaying = true
-            self.isLoading = true
-            if currentSong != nil {
-                Task { @MainActor in
-                    WKAudioEngine.shared.play()
-                }
-            } else if let first = queue.first {
-                play(song: first)
-            }
+        } else if let song = currentSong {
+            play(song: song)
+        } else if let first = queue.first {
+            play(song: first)
         }
-        updateLockScreen()
     }
     
     public func next() {
@@ -319,11 +340,8 @@ public final class PlayerEngine: @unchecked Sendable {
         } else if isRepeat || !queue.isEmpty {
             play(song: queue[0])
         } else {
-            isPlaying = false
-            Task { @MainActor in
-                WKAudioEngine.shared.pause()
-            }
-            updateLockScreen()
+            pause()
+            seek(to: 0)
         }
     }
     
@@ -343,10 +361,32 @@ public final class PlayerEngine: @unchecked Sendable {
     public func seek(to time: TimeInterval) {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
-        Task { @MainActor in
-            WKAudioEngine.shared.seek(to: clamped)
+        let cmTime = CMTime(seconds: clamped, preferredTimescale: 600)
+        avPlayer?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.updateNowPlaying()
+            }
         }
-        updateLockScreen()
+        NowPlayingManager.shared.updatePlaybackProgress(
+            currentTime: clamped,
+            duration: duration,
+            isPlaying: isPlaying
+        )
+    }
+    
+    // MARK: - Smart Queue Skipping
+    public func skipToQueueItem(_ song: Song) {
+        guard let targetIdx = queue.firstIndex(where: { $0.id == song.id }) else {
+            play(song: song)
+            return
+        }
+        if targetIdx > 0 {
+            let preceding = Array(queue.prefix(targetIdx))
+            history.append(contentsOf: preceding)
+            queue.removeFirst(targetIdx)
+        }
+        guard let target = queue.first else { return }
+        play(song: target)
     }
     
     public func toggleFavorite(for songId: String) {
@@ -417,73 +457,61 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
-    private func updateLockScreen() {
-        // Controlled isolation: temporarily disabled to guarantee zero lockscreen crash
-    }
-    
     private func handleSongDidEnd() {
         if isRepeat {
             seek(to: 0)
-            Task { @MainActor in
-                WKAudioEngine.shared.play()
-            }
+            play()
         } else {
             next()
         }
     }
-}
-
-// MARK: - WKAudioEngineDelegate
-extension PlayerEngine: WKAudioEngineDelegate {
-    public func audioEngineDidReady() {
-        print("[PlayerEngine] WKAudioEngine ready")
+    
+    private func updateNowPlaying() {
+        NowPlayingManager.shared.updateNowPlaying(
+            song: currentSong,
+            currentTime: currentTime,
+            duration: duration,
+            isPlaying: isPlaying
+        )
     }
     
-    public func audioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
-        let now = Date().timeIntervalSince1970
-        let inGracePeriod = (now - lastUserToggleTime) < 0.6
-        
-        if inGracePeriod {
-            // Respect user's explicit intent during grace period to prevent flickering
-            if userIntentPlaying {
-                self.isPlaying = true
-                self.isLoading = isLoading
-            } else {
-                self.isPlaying = false
-                self.isLoading = false
-            }
-        } else {
-            if isLoading {
-                self.isLoading = true
-                if userIntentPlaying {
-                    self.isPlaying = true
-                }
-            } else {
-                self.isPlaying = isPlaying
-                self.isLoading = false
-                self.userIntentPlaying = isPlaying
+    private func fetchRadioQueue(for videoId: String) {
+        Task {
+            let radioSongs = await RadioService.shared.fetchUpNext(videoId: videoId)
+            await MainActor.run {
+                self.appendRadioSongs(radioSongs)
             }
         }
-        updateLockScreen()
     }
     
-    public func audioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
-        self.currentTime = currentTime
-        if duration > 0 {
-            self.duration = duration
-        }
-        if Int(currentTime) % 5 == 0 {
-            updateLockScreen()
+    private func appendRadioSongs(_ songs: [Song]) {
+        for song in songs {
+            if !queue.contains(where: { $0.id == song.id }) {
+                queue.append(song)
+            }
         }
     }
     
-    public func audioEngineDidEnd() {
-        handleSongDidEnd()
+    private func cleanupItemObservers() {
+        itemStatusObserver?.invalidate()
+        itemStatusObserver = nil
+        itemDurationObserver?.invalidate()
+        itemDurationObserver = nil
+        if let endObs = itemEndObserver {
+            NotificationCenter.default.removeObserver(endObs)
+            itemEndObserver = nil
+        }
     }
     
-    public func audioEngineDidFail(error: String) {
-        self.isLoading = false
-        self.errorMessage = error
-        print("[PlayerEngine] WKAudioEngine error:", error)
+    private func cleanupPlayer() {
+        cleanupItemObservers()
+        if let token = timeObserverToken {
+            avPlayer?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
+        avPlayer?.pause()
+        avPlayer = nil
     }
 }
