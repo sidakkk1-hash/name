@@ -9,13 +9,19 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        run: |
+          # macos-14 has Xcode 16.x pre-installed
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
