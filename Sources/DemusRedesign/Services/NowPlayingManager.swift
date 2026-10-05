@@ -85,9 +85,7 @@ public final class NowPlayingManager: @unchecked Sendable {
     ) {
         #if canImport(MediaPlayer)
         guard let song = song else {
-            Task { @MainActor in
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            }
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             cachedArtwork = nil
             lastArtworkSongId = nil
             return
@@ -110,10 +108,7 @@ public final class NowPlayingManager: @unchecked Sendable {
             info[MPMediaItemPropertyArtwork] = cached
         }
         
-        let initialInfo = info
-        Task { @MainActor in
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
-        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         
         // Load artwork if needed
         if lastArtworkSongId != song.id {
@@ -127,11 +122,8 @@ public final class NowPlayingManager: @unchecked Sendable {
                    cachedImage.size.width > 0, cachedImage.size.height > 0 {
                     let artwork = MPMediaItemArtwork(boundsSize: cachedImage.size) { _ in cachedImage }
                     self.cachedArtwork = artwork
-                    var current = initialInfo
-                    current[MPMediaItemPropertyArtwork] = artwork
-                    Task { @MainActor in
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = current
-                    }
+                    info[MPMediaItemPropertyArtwork] = artwork
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                     return
                 }
                 
