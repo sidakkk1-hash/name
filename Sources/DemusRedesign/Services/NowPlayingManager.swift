@@ -28,64 +28,51 @@ public final class NowPlayingManager: @unchecked Sendable {
         // 1. Play Command
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.removeTarget(nil)
-        commandCenter.playCommand.addTarget { [weak player] _ in
-            Task { @MainActor in
-                player?.play()
-            }
+        commandCenter.playCommand.addTarget { _ in
+            player.play()
             return .success
         }
         
         // 2. Pause Command
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.pauseCommand.addTarget { [weak player] _ in
-            Task { @MainActor in
-                player?.pause()
-            }
+        commandCenter.pauseCommand.addTarget { _ in
+            player.pause()
             return .success
         }
         
         // 3. Toggle Play/Pause Command
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.addTarget { [weak player] _ in
-            Task { @MainActor in
-                player?.togglePlay()
-            }
+        commandCenter.togglePlayPauseCommand.addTarget { _ in
+            player.togglePlay()
             return .success
         }
         
         // 4. Next Track Command
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.addTarget { [weak player] _ in
-            Task { @MainActor in
-                player?.next()
-            }
+        commandCenter.nextTrackCommand.addTarget { _ in
+            player.next()
             return .success
         }
         
         // 5. Previous Track Command
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.addTarget { [weak player] _ in
-            Task { @MainActor in
-                player?.prev()
-            }
+        commandCenter.previousTrackCommand.addTarget { _ in
+            player.prev()
             return .success
         }
         
         // 6. Change Playback Position (Scrubbing on Lock Screen & Control Center)
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak player] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+        commandCenter.changePlaybackPositionCommand.addTarget { event in
+            guard let posEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            let targetTime = event.positionTime
-            Task { @MainActor in
-                player?.seek(to: targetTime)
-            }
+            player.seek(to: posEvent.positionTime)
             return .success
         }
         #endif
@@ -110,9 +97,9 @@ public final class NowPlayingManager: @unchecked Sendable {
             MPMediaItemPropertyTitle: song.title,
             MPMediaItemPropertyArtist: song.artistName,
             MPMediaItemPropertyAlbumTitle: song.albumTitle ?? song.title,
-            MPMediaItemPropertyPlaybackDuration: NSNumber(value: max(1.0, duration)),
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
-            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? 1.0 : 0.0)
+            MPMediaItemPropertyPlaybackDuration: max(1.0, duration),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         
         if lastArtworkSongId == song.id, let cached = cachedArtwork {
@@ -133,8 +120,8 @@ public final class NowPlayingManager: @unchecked Sendable {
                     
                     let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                     
-                    await MainActor.run { [weak self] in
-                        guard let self = self, self.lastArtworkSongId == song.id else { return }
+                    await MainActor.run {
+                        guard self.lastArtworkSongId == song.id else { return }
                         self.cachedArtwork = artwork
                         var current = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                         current[MPMediaItemPropertyArtwork] = artwork
@@ -154,9 +141,9 @@ public final class NowPlayingManager: @unchecked Sendable {
     ) {
         #if canImport(MediaPlayer)
         guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: currentTime)
-        info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: max(1.0, duration))
-        info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? 1.0 : 0.0)
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        info[MPMediaItemPropertyPlaybackDuration] = max(1.0, duration)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         #endif
     }
