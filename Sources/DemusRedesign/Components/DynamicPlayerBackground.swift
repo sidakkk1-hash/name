@@ -40,8 +40,11 @@ public struct DynamicPlayerBackground: View {
                         fallbackGradient
                     }
                     .id(url.absoluteString)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.4), value: url)
                 } else {
                     fallbackGradient
+                        .transition(.opacity)
                 }
                 
                 // Frosted Liquid Glass Satin Veil

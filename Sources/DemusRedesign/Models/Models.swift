@@ -174,6 +174,7 @@ public enum PlayerBackground: String, CaseIterable, Identifiable, Codable, Senda
 // MARK: - AppOptions (Derived from Demus Demus10AppOptions metadata)
 public struct AppOptions: Codable, Sendable {
     public var playerBackground: PlayerBackground = .default
+    public var accentTheme: AppAccentTheme = .appleRed
     public var showSongDurations: Bool = true
     public var showRewindButton: Bool = true
     public var defaultTab: Int = 0

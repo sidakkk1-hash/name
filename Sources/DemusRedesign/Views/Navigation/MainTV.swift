@@ -45,6 +45,20 @@ public struct MainTV: View {
                     .tag(AppTab.settings)
             }
             .tint(AppleMusicTheme.accent)
+            .onChange(of: mainTVM.selectedTab) { _, _ in
+                #if canImport(UIKit)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                #endif
+            }
+            .onAppear {
+                #if canImport(UIKit)
+                let appearance = UITabBarAppearance()
+                appearance.configureWithDefaultBackground()
+                appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+                UITabBar.appearance().standardAppearance = appearance
+                UITabBar.appearance().scrollEdgeAppearance = appearance
+                #endif
+            }
             
             // Floating MiniPlayer docked immediately above the tab bar
             MiniPlayer(player: player, mainTVM: mainTVM)

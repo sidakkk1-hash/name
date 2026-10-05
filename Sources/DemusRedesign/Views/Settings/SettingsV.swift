@@ -89,8 +89,26 @@ public struct SettingsV: View {
                     }
                 }
                 
-                // Now Playing Background
-                Section("Now Playing Appearance") {
+                // Theme & Accent Color
+                Section("Appearance & Theme") {
+                    Picker("Accent Color", selection: $mainTVM.options.accentTheme) {
+                        ForEach(AppAccentTheme.allCases) { theme in
+                            HStack {
+                                Circle()
+                                    .fill(theme.color)
+                                    .frame(width: 14, height: 14)
+                                Text(theme.rawValue)
+                            }
+                            .tag(theme)
+                        }
+                    }
+                    .onChange(of: mainTVM.options.accentTheme) { _, newTheme in
+                        #if canImport(UIKit)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        #endif
+                        ThemeManager.shared.currentAccent = newTheme
+                    }
+                    
                     Picker("Player Background", selection: $mainTVM.options.playerBackground) {
                         Text("Artwork Blur (Apple Music)").tag(PlayerBackground.default)
                         Text("Solid Accent").tag(PlayerBackground.oneColor)
@@ -101,7 +119,10 @@ public struct SettingsV: View {
                 // Storage & Cache
                 Section("Storage") {
                     Button(role: .destructive) {
-                        // Clear Cache
+                        #if canImport(UIKit)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        #endif
+                        URLCache.shared.removeAllCachedResponses()
                     } label: {
                         Text("Clear Artwork Cache")
                     }

@@ -18,10 +18,7 @@ targets:
       - Sources/DemusRedesign
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.demusapp.redesign
-      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_FILE: Sources/DemusRedesign/Info.plist
+      GENERATE_INFOPLIST_FILE: NO
       CURRENT_PROJECT_VERSION: 1
       MARKETING_VERSION: "2.0.22"
-      INFOPLIST_KEY_UILaunchScreen_Generation: YES
-      INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
-      INFOPLIST_KEY_UIBackgroundModes:
-        - audio

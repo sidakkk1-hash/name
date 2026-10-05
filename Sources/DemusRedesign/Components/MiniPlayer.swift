@@ -112,18 +112,26 @@ public struct MiniPlayer: View {
                         
                         Spacer()
                         
-                        // Play/Pause Action with Haptic
+                        // Play/Pause Action with Haptic and Buffering Protection
                         Button {
                             #if canImport(UIKit)
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             #endif
                             player.togglePlay()
                         } label: {
-                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 21, weight: .medium))
-                                .foregroundStyle(AppleMusicTheme.label)
-                                .contentTransition(.symbolEffect(.replace))
-                                .frame(width: 38, height: 38)
+                            ZStack {
+                                if player.isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: AppleMusicTheme.label))
+                                        .scaleEffect(0.9)
+                                } else {
+                                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 21, weight: .medium))
+                                        .foregroundStyle(AppleMusicTheme.label)
+                                        .contentTransition(.symbolEffect(.replace))
+                                }
+                            }
+                            .frame(width: 38, height: 38)
                         }
                         .buttonStyle(.appleMusicPlayButton)
                         
@@ -143,21 +151,28 @@ public struct MiniPlayer: View {
                     }
                     .padding(.horizontal, 14)
                     .frame(height: AppleMusicTheme.miniPlayerHeight)
-                    // Liquid Glassmorphic Backdrop
+                    // Liquid Glassmorphic Backdrop with Specular Highlight
                     .background(
                         ZStack {
                             Rectangle().fill(.ultraThinMaterial)
                             LinearGradient(
-                                colors: [Color.white.opacity(0.12), Color.clear],
+                                colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         }
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: AppleMusicTheme.radiusMiniPlayer, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppleMusicTheme.radiusMiniPlayer, style: .continuous)
-                            .stroke(Color.white.opacity(0.18), lineWidth: 0.6)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.8
+                            )
                     )
                 }
                 .buttonStyle(.appleMusicCard)

@@ -31,12 +31,18 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
+    // Playback state stability & rapid-tap debounce
+    private var userIntentPlaying: Bool = false
+    private var lastUserToggleTime: TimeInterval = 0
+    private var lastActionTime: TimeInterval = 0
+    
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     
     public init() {
         configureAudioSession()
         setupAudioObservers()
+        restoreLastSession()
         Task { @MainActor in
             WKAudioEngine.shared.delegate = self
         }
@@ -47,12 +53,27 @@ public final class PlayerEngine: @unchecked Sendable {
         removeAudioObservers()
     }
     
+    private func restoreLastSession() {
+        if let data = UserDefaults.standard.data(forKey: "demus_last_song"),
+           let song = try? JSONDecoder().decode(Song.self, from: data) {
+            self.currentSong = song
+            self.duration = song.duration > 0 ? song.duration : 180
+            self.queue = [song]
+        }
+    }
+    
+    private func persistCurrentSession(song: Song) {
+        if let data = try? JSONEncoder().encode(song) {
+            UserDefaults.standard.set(data, forKey: "demus_last_song")
+        }
+    }
+    
     // MARK: - Audio Session Configuration
     private func configureAudioSession() {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
@@ -147,9 +168,15 @@ public final class PlayerEngine: @unchecked Sendable {
         self.currentSong = upgradedSong
         self.currentTime = 0
         self.duration = upgradedSong.duration > 0 ? upgradedSong.duration : 180
-        self.isPlaying = false
+        self.isPlaying = true
         self.isLoading = true
+        self.userIntentPlaying = true
+        let now = Date().timeIntervalSince1970
+        self.lastUserToggleTime = now
+        self.lastActionTime = now
         self.errorMessage = nil
+        
+        persistCurrentSession(song: upgradedSong)
         
         // Add to persistent library history
         LibraryRepository.shared.addHistory(upgradedSong)
@@ -198,10 +225,15 @@ public final class PlayerEngine: @unchecked Sendable {
         self.currentSong = target
         self.currentTime = 0
         self.duration = target.duration > 0 ? target.duration : 180
-        self.isPlaying = false
+        self.isPlaying = true
         self.isLoading = true
+        self.userIntentPlaying = true
+        let now = Date().timeIntervalSince1970
+        self.lastUserToggleTime = now
+        self.lastActionTime = now
         self.errorMessage = nil
         
+        persistCurrentSession(song: target)
         LibraryRepository.shared.addHistory(target)
         updateLockScreen()
         
@@ -233,17 +265,30 @@ public final class PlayerEngine: @unchecked Sendable {
     
     // MARK: - Playback Controls
     public func togglePlay() {
+        let now = Date().timeIntervalSince1970
+        guard now - lastActionTime > 0.25 else { return } // 250ms rapid-tap debounce
+        lastActionTime = now
+        lastUserToggleTime = now
+        
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+        
         if isPlaying {
+            userIntentPlaying = false
+            self.isPlaying = false
+            self.isLoading = false
             Task { @MainActor in
                 WKAudioEngine.shared.pause()
             }
-            isPlaying = false
         } else {
+            userIntentPlaying = true
+            self.isPlaying = true
+            self.isLoading = true
             if currentSong != nil {
                 Task { @MainActor in
                     WKAudioEngine.shared.play()
                 }
-                isPlaying = true
             } else if let first = queue.first {
                 play(song: first)
             }
@@ -398,8 +443,30 @@ extension PlayerEngine: WKAudioEngineDelegate {
     }
     
     public func audioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
-        self.isPlaying = isPlaying
-        self.isLoading = isLoading
+        let now = Date().timeIntervalSince1970
+        let inGracePeriod = (now - lastUserToggleTime) < 0.6
+        
+        if inGracePeriod {
+            // Respect user's explicit intent during grace period to prevent flickering
+            if userIntentPlaying {
+                self.isPlaying = true
+                self.isLoading = isLoading
+            } else {
+                self.isPlaying = false
+                self.isLoading = false
+            }
+        } else {
+            if isLoading {
+                self.isLoading = true
+                if userIntentPlaying {
+                    self.isPlaying = true
+                }
+            } else {
+                self.isPlaying = isPlaying
+                self.isLoading = false
+                self.userIntentPlaying = isPlaying
+            }
+        }
         updateLockScreen()
     }
     

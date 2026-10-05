@@ -7,11 +7,13 @@ import UIKit
 #endif
 
 // MARK: - NowPlayingManager
-/// Manages iOS Lock Screen Now Playing metadata and Remote Command Center handlers.
+/// Manages iOS Lock Screen Now Playing metadata, Control Center, and Dynamic Island integration.
 public final class NowPlayingManager: @unchecked Sendable {
     public static let shared = NowPlayingManager()
     
     private var isConfigured: Bool = false
+    private var lastArtworkSongId: String?
+    private var cachedArtwork: MPMediaItemArtwork?
     
     public init() {}
     
@@ -28,9 +30,8 @@ public final class NowPlayingManager: @unchecked Sendable {
         center.playCommand.addTarget { _ in
             if !player.isPlaying {
                 player.togglePlay()
-                return .success
             }
-            return .commandFailed
+            return .success
         }
         
         // Pause Command
@@ -38,9 +39,8 @@ public final class NowPlayingManager: @unchecked Sendable {
         center.pauseCommand.addTarget { _ in
             if player.isPlaying {
                 player.togglePlay()
-                return .success
             }
-            return .commandFailed
+            return .success
         }
         
         // Toggle Play/Pause Command
@@ -86,6 +86,8 @@ public final class NowPlayingManager: @unchecked Sendable {
         #if canImport(MediaPlayer)
         guard let song = song else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            cachedArtwork = nil
+            lastArtworkSongId = nil
             return
         }
         
@@ -94,27 +96,57 @@ public final class NowPlayingManager: @unchecked Sendable {
             MPMediaItemPropertyArtist: song.artistName,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPMediaItemPropertyPlaybackDuration: duration > 0 ? duration : 180,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue
         ]
         
         if let album = song.albumTitle, !album.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
         
+        // Reuse cached artwork if for the same song
+        if lastArtworkSongId == song.id, let cached = cachedArtwork {
+            info[MPMediaItemPropertyArtwork] = cached
+        }
+        
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         
-        // Asynchronously load artwork for Lock Screen
-        if let artworkURL = song.artworkURL {
-            Task {
-                if let data = try? await HTTPClient.shared.get(url: artworkURL),
-                   let image = UIImage(data: data) {
-                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                    await MainActor.run {
-                        var current = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                        current[MPMediaItemPropertyArtwork] = artwork
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = current
-                    }
+        // Load artwork if needed
+        if lastArtworkSongId != song.id {
+            lastArtworkSongId = song.id
+            cachedArtwork = nil
+            
+            if let artworkURL = song.artworkURL {
+                #if canImport(UIKit)
+                // First check in-memory cache
+                if let cachedImage = ImageCache.shared.get(for: artworkURL) {
+                    let artwork = MPMediaItemArtwork(boundsSize: cachedImage.size) { _ in cachedImage }
+                    self.cachedArtwork = artwork
+                    info[MPMediaItemPropertyArtwork] = artwork
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                    return
                 }
+                
+                // Otherwise fetch asynchronously
+                let songId = song.id
+                Task {
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: artworkURL)
+                        if let image = UIImage(data: data) {
+                            ImageCache.shared.set(image, for: artworkURL)
+                            await MainActor.run {
+                                guard self.lastArtworkSongId == songId else { return }
+                                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                                self.cachedArtwork = artwork
+                                var current = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                                current[MPMediaItemPropertyArtwork] = artwork
+                                MPNowPlayingInfoCenter.default().nowPlayingInfo = current
+                            }
+                        }
+                    } catch {}
+                }
+                #endif
             }
         }
         #endif

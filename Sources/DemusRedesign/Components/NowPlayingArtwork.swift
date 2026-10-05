@@ -31,6 +31,9 @@ public struct NowPlayingArtwork: View {
                 defaultArtworkPlaceholder(size: artworkSize)
             }
         }
+        .id(song?.id)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.4), value: song?.id)
         .frame(width: artworkSize, height: artworkSize)
         .clipShape(RoundedRectangle(cornerRadius: AppleMusicTheme.radiusArtworkNowPlaying, style: .continuous))
         .overlay(

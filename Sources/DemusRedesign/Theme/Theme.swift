@@ -3,10 +3,53 @@ import SwiftUI
 import UIKit
 #endif
 
+// MARK: - AppAccentTheme
+public enum AppAccentTheme: String, CaseIterable, Identifiable, Codable, Sendable {
+    case appleRed = "Apple Music Red"
+    case electricViolet = "Electric Violet"
+    case oceanBlue = "Ocean Blue"
+    case sunsetCoral = "Sunset Coral"
+    case mintGreen = "Mint Green"
+    case goldenAmber = "Golden Amber"
+    
+    public var id: String { rawValue }
+    
+    public var color: Color {
+        switch self {
+        case .appleRed: return Color(red: 250 / 255.0, green: 36 / 255.0, blue: 60 / 255.0)
+        case .electricViolet: return Color(red: 175 / 255.0, green: 82 / 255.0, blue: 222 / 255.0)
+        case .oceanBlue: return Color(red: 0 / 255.0, green: 122 / 255.0, blue: 255 / 255.0)
+        case .sunsetCoral: return Color(red: 255 / 255.0, green: 100 / 255.0, blue: 130 / 255.0)
+        case .mintGreen: return Color(red: 48 / 255.0, green: 209 / 255.0, blue: 88 / 255.0)
+        case .goldenAmber: return Color(red: 255 / 255.0, green: 149 / 255.0, blue: 0 / 255.0)
+        }
+    }
+}
+
+// MARK: - ThemeManager
+public final class ThemeManager: @unchecked Sendable {
+    public static let shared = ThemeManager()
+    
+    public var currentAccent: AppAccentTheme = .appleRed {
+        didSet {
+            UserDefaults.standard.set(currentAccent.rawValue, forKey: "demus_accent_theme")
+        }
+    }
+    
+    public init() {
+        if let saved = UserDefaults.standard.string(forKey: "demus_accent_theme"),
+           let theme = AppAccentTheme(rawValue: saved) {
+            self.currentAccent = theme
+        }
+    }
+}
+
 // MARK: - Apple Music Native Design Tokens & Design System
 public enum AppleMusicTheme {
-    // Primary Apple Music Red/Pink Accent (#FA243C)
-    public static let accent = Color(red: 250 / 255.0, green: 36 / 255.0, blue: 60 / 255.0)
+    // Dynamic Accent Color (Defaults to #FA243C)
+    public static var accent: Color {
+        ThemeManager.shared.currentAccent.color
+    }
     
     // Gradients
     public static let accentGradient = LinearGradient(

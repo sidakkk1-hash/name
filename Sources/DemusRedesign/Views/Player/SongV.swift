@@ -74,9 +74,14 @@ public struct SongV: View {
         }
         .sheet(isPresented: $mainTVM.isLyricsPresented) {
             SongLyricsV(player: player)
+                .presentationBackground(.ultraThinMaterial)
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $mainTVM.isQueuePresented) {
             QueueV(player: player)
+                .presentationBackground(.ultraThinMaterial)
+                .presentationDetents([.fraction(0.85), .large])
+                .presentationDragIndicator(.visible)
         }
     }
     
@@ -87,9 +92,11 @@ public struct SongV: View {
                 dismiss()
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
             
@@ -147,10 +154,12 @@ public struct SongV: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis.circle.fill")
-                    .font(.system(size: 22, weight: .medium))
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
             }
         }
     }

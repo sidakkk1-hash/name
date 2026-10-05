@@ -103,15 +103,24 @@ public struct AppleMusicPlaybackControls: View {
             }
             .buttonStyle(.appleMusicPlayButton)
             
-            // Dominant Play / Pause Button
+            // Dominant Play / Pause Button with Buffering Protection
             Button {
                 player.togglePlay()
             } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 52, weight: .medium))
-                    .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 68, height: 68)
+                ZStack {
+                    if player.isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.6)
+                            .frame(width: 68, height: 68)
+                    } else {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 52, weight: .medium))
+                            .foregroundStyle(.white)
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 68, height: 68)
+                    }
+                }
             }
             .buttonStyle(.appleMusicPlayButton)
             
@@ -174,7 +183,7 @@ public struct AirPlayRoutePickerView: UIViewRepresentable {
 #endif
 
 // MARK: - AppleMusicSecondaryToolbar
-/// Bottom auxiliary toolbar: Lyrics, AirPlay / Bluetooth, Queue.
+/// Bottom auxiliary toolbar: Lyrics, AirPlay / Bluetooth, Queue with frosted glass circular capsules.
 public struct AppleMusicSecondaryToolbar: View {
     @Bindable public var mainTVM: MainTVM
     @Bindable public var player: PlayerEngine
@@ -188,12 +197,17 @@ public struct AppleMusicSecondaryToolbar: View {
         HStack(spacing: 0) {
             // Lyrics Button
             Button {
+                #if canImport(UIKit)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                #endif
                 mainTVM.isLyricsPresented = true
             } label: {
                 Image(systemName: "quote.bubble")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
                     .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
             }
             .buttonStyle(.appleMusicPlayButton)
             
@@ -203,23 +217,32 @@ public struct AppleMusicSecondaryToolbar: View {
             #if canImport(AVKit)
             AirPlayRoutePickerView()
                 .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Circle())
             #else
             Image(systemName: "airplayaudio")
-                .font(.system(size: 21, weight: .medium))
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
                 .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Circle())
             #endif
             
             Spacer()
             
             // Queue / Playing Next Button
             Button {
+                #if canImport(UIKit)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                #endif
                 mainTVM.isQueuePresented = true
             } label: {
                 Image(systemName: "list.bullet")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
                     .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
             }
             .buttonStyle(.appleMusicPlayButton)
         }

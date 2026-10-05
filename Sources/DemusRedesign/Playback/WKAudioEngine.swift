@@ -42,7 +42,7 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {
             print("[WKAudioEngine] AVAudioSession setup error:", error)
@@ -93,6 +93,12 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {}
+            if self?.silentAudioPlayer?.isPlaying != true {
+                self?.silentAudioPlayer?.play()
+            }
             Task { @MainActor in
                 self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
             }
