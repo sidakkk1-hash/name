@@ -153,21 +153,28 @@ public final class PlayerEngine: @unchecked Sendable {
         
         updateLockScreen()
         
+        let currentVideoId = upgradedSong.id
+        
         // Trigger Demus WebKit Audio Engine (Zero 403 Forbidden)
         Task { @MainActor in
-            WKAudioEngine.shared.loadAndPlay(videoId: upgradedSong.id)
+            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
         }
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music
-        Task { [weak self] in
-            let radioSongs = await RadioService.shared.fetchUpNext(videoId: upgradedSong.id)
-            guard let self = self, !radioSongs.isEmpty else { return }
-            await MainActor.run {
-                for nextSong in radioSongs {
-                    if !self.queue.contains(where: { $0.id == nextSong.id }) {
-                        self.queue.append(nextSong)
-                    }
-                }
+        fetchRadioQueue(for: currentVideoId)
+    }
+    
+    private func fetchRadioQueue(for videoId: String) {
+        Task {
+            let radioSongs = await RadioService.shared.fetchUpNext(videoId: videoId)
+            self.appendRadioSongs(radioSongs)
+        }
+    }
+    
+    private func appendRadioSongs(_ songs: [Song]) {
+        for song in songs {
+            if !queue.contains(where: { $0.id == song.id }) {
+                queue.append(song)
             }
         }
     }
