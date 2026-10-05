@@ -667,6 +667,11 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
+    private func cancelLoadingTimeout() {
+        loadingTimeoutTask?.cancel()
+        loadingTimeoutTask = nil
+    }
+    
     private func cleanupPlayer() {
         cancelLoadingTimeout()
         cleanupItemObservers()

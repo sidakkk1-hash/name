@@ -6,7 +6,7 @@ options:
   xcodeVersion: "16.0"
 
 settings:
-  SWIFT_VERSION: "6.0"
+  SWIFT_VERSION: "5.0"
   TARGETED_DEVICE_FAMILY: "1,2"
 
 targets:
@@ -22,3 +22,6 @@ targets:
       GENERATE_INFOPLIST_FILE: NO
       CURRENT_PROJECT_VERSION: 1
       MARKETING_VERSION: "2.0.22"
+      CODE_SIGNING_ALLOWED: NO
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGN_IDENTITY: ""
