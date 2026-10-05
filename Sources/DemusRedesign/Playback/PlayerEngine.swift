@@ -73,7 +73,11 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetoothA2DP]
+            )
             try session.setActive(true)
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
@@ -189,6 +193,27 @@ public final class PlayerEngine: @unchecked Sendable {
         updateLockScreen()
         
         let currentVideoId = upgradedSong.id
+        
+        #if canImport(AVFAudio)
+        let diagSession = AVAudioSession.sharedInstance()
+        let diagCat = diagSession.category.rawValue
+        let diagOther = diagSession.isOtherAudioPlaying
+        #else
+        let diagCat = "unknown"
+        let diagOther = false
+        #endif
+        #if canImport(UIKit)
+        let diagState = UIApplication.shared.applicationState.rawValue
+        #else
+        let diagState = 0
+        #endif
+        print("""
+        [AudioDiagnostics]
+          CURRENT AUDIO ENGINE: WKAudioEngine (WKWebView)
+          application state: \(diagState)
+          AVAudioSession category: \(diagCat)
+          AVAudioSession isOtherAudioPlaying: \(diagOther)
+        """)
         
         // Trigger Demus WebKit Audio Engine (Zero 403 Forbidden)
         Task { @MainActor in

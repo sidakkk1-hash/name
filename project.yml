@@ -16,6 +16,11 @@ targets:
     deploymentTarget: "18.0"
     sources:
       - Sources/DemusRedesign
+    info:
+      path: Sources/DemusRedesign/Info.plist
+      properties:
+        UIBackgroundModes:
+          - audio
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.demusapp.redesign
       INFOPLIST_FILE: Sources/DemusRedesign/Info.plist

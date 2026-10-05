@@ -539,6 +539,58 @@ public final class BrowseService: @unchecked Sendable {
                 }
             }
             
+            // Latest Release (Single or EP featured by YouTube Music)
+            else if titleText.contains("latest release") || titleText.contains("new release") {
+                if let item = items.first, let twoRow = item["musicTwoRowItemRenderer"] as? [String: Any] {
+                    var lTitle = ""
+                    var lId = ""
+                    var lArtwork: URL?
+                    var lYear: String?
+                    
+                    let nav = twoRow["navigationEndpoint"] as? [String: Any]
+                    if let browse = nav?["browseEndpoint"] as? [String: Any],
+                       let bId = browse["browseId"] as? String {
+                        lId = bId
+                    }
+                    if let titleRuns = (twoRow["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
+                        lTitle = first["text"] as? String ?? ""
+                        if lId.isEmpty,
+                           let nav = first["navigationEndpoint"] as? [String: Any],
+                           let browse = nav["browseEndpoint"] as? [String: Any],
+                           let bId = browse["browseId"] as? String {
+                            lId = bId
+                        }
+                    }
+                    if let subRuns = (twoRow["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]] {
+                        for r in subRuns {
+                            let t = r["text"] as? String ?? ""
+                            if t.count == 4 && Int(t) != nil {
+                                lYear = t
+                            }
+                        }
+                    }
+                    if let thumbRenderer = twoRow["thumbnailRenderer"] as? [String: Any],
+                       let musicThumb = thumbRenderer["musicThumbnailRenderer"] as? [String: Any],
+                       let thumbnail = musicThumb["thumbnail"] as? [String: Any],
+                       let thumbs = thumbnail["thumbnails"] as? [[String: Any]],
+                       let last = thumbs.last,
+                       let urlStr = last["url"] as? String {
+                        lArtwork = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
+                    }
+                    if !lId.isEmpty && !lTitle.isEmpty && lTitle != "Album" && lTitle != "Single" {
+                        latestRelease = Album(
+                            id: lId,
+                            title: lTitle,
+                            artist: name,
+                            artistId: id,
+                            artworkURL: lArtwork,
+                            year: lYear,
+                            albumType: "Single"
+                        )
+                    }
+                }
+            }
+            
             // Albums
             else if titleText == "albums" || (titleText.contains("album") && !titleText.contains("single")) {
                 for item in items {
@@ -706,8 +758,7 @@ public final class BrowseService: @unchecked Sendable {
             }
         }
         
-        // Latest Release assignment (from singles or albums)
-        latestRelease = singles.first ?? albums.first
+        // Only return genuine latest release parsed from API
         
         return Artist(
             id: id,

@@ -33,14 +33,10 @@ public struct ArtistV: View {
     
     public var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 // 1. Edge-to-Edge Hero Header
                 ZStack(alignment: .bottom) {
-                    // Hero Image (Strictly clipped to avoid horizontal overflow)
                     heroImageView
-                        .frame(height: 380)
-                        .clipped()
-                        .allowsHitTesting(false)
                     
                     // Blurred gradient overlay fading into dark backdrop
                     LinearGradient(
@@ -53,6 +49,7 @@ public struct ArtistV: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
+                    .frame(height: 380)
                     .allowsHitTesting(false)
                     
                     // Artist Name & Action Controls
@@ -140,16 +137,21 @@ public struct ArtistV: View {
                 .frame(maxWidth: .infinity)
                 .clipped()
                 
-                // Loading Indicator
+                // Loading Indicator: only shown while actively fetching data
                 if isLoading {
                     ProgressView()
                         .tint(AppleMusicTheme.accent)
-                        .padding(.vertical, 20)
+                        .padding(.vertical, 32)
                         .frame(maxWidth: .infinity)
                 }
                 
-                // 2. Latest Release Card
-                if let latest = currentArtist.latestRelease {
+                // 2. Latest Release Card (Strictly render ONLY if genuine release exists)
+                if let latest = currentArtist.latestRelease,
+                   !latest.id.isEmpty,
+                   !latest.title.isEmpty,
+                   latest.title != "Album",
+                   latest.title != "Single",
+                   latest.artworkURL != nil {
                     VStack(alignment: .leading, spacing: 10) {
                         NavigationLink(value: AppRoute.album(latest.id)) {
                             HStack(spacing: 14) {
@@ -183,6 +185,7 @@ public struct ArtistV: View {
                                         .font(.system(size: 13, weight: .regular))
                                         .foregroundStyle(AppleMusicTheme.secondaryLabel)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 
                                 Spacer()
                                 
@@ -232,10 +235,11 @@ public struct ArtistV: View {
                             .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 16) {
+                            LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.albums) { album in
                                     NavigationLink(value: AppRoute.album(album.id)) {
-                                        AlbumCard(album: album, size: 160)
+                                        AlbumCard(album: album, size: 155)
+                                            .frame(width: 155)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -254,10 +258,11 @@ public struct ArtistV: View {
                             .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 16) {
+                            LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.singles) { single in
                                     NavigationLink(value: AppRoute.album(single.id)) {
-                                        AlbumCard(album: single, size: 160)
+                                        AlbumCard(album: single, size: 155)
+                                            .frame(width: 155)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -276,10 +281,11 @@ public struct ArtistV: View {
                             .padding(.horizontal, 16)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 16) {
+                            LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.relatedArtists) { related in
                                     NavigationLink(value: AppRoute.artist(related.id)) {
                                         ArtistCard(artist: related, diameter: 135)
+                                            .frame(width: 135)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -348,17 +354,23 @@ public struct ArtistV: View {
     // MARK: - Hero Image View
     @ViewBuilder
     private var heroImageView: some View {
-        if let heroUrl = currentArtist.heroImageURL ?? currentArtist.artworkURL {
-            CachedAsyncImage(url: heroUrl) { img in
-                img
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                heroPlaceholder
+        Color.clear
+            .frame(height: 380)
+            .overlay {
+                if let heroUrl = currentArtist.heroImageURL ?? currentArtist.artworkURL {
+                    CachedAsyncImage(url: heroUrl) { img in
+                        img
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        heroPlaceholder
+                    }
+                } else {
+                    heroPlaceholder
+                }
             }
-        } else {
-            heroPlaceholder
-        }
+            .clipped()
+            .allowsHitTesting(false)
     }
     
     private var heroPlaceholder: some View {
@@ -372,6 +384,7 @@ public struct ArtistV: View {
                 .font(.system(size: 80))
                 .foregroundStyle(.white.opacity(0.3))
         }
+        .frame(height: 380)
         .allowsHitTesting(false)
     }
     

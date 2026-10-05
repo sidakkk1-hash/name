@@ -122,6 +122,7 @@ public struct SongRow: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             
             Spacer()
             
