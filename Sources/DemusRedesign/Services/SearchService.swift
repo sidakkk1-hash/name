@@ -31,7 +31,7 @@ public final class SearchService: @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         
-        var body: [String: Any] = [
+        let body: [String: Any] = [
             "context": HTTPClient.makeYTMContext(),
             "query": trimmed,
             "params": filter.rawValue

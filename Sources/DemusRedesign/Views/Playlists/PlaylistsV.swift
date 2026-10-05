@@ -4,6 +4,7 @@ import SwiftUI
 /// Reconstructed Playlists screen with 2-column adaptive grid of squircle playlist cards,
 /// "New Playlist" action, and empty state support.
 public struct PlaylistsV: View {
+    @Bindable public var player: PlayerEngine = .shared
     @State private var playlists: [Playlist] = LibraryRepository.shared.playlists
     @State private var showingNewPlaylistAlert: Bool = false
     @State private var newPlaylistName: String = ""

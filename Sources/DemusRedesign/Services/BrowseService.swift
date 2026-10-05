@@ -188,12 +188,13 @@ public final class BrowseService: @unchecked Sendable {
             if let titleRuns = (vh["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
                 name = first["text"] as? String ?? name
             }
-            if let thumb = vh["thumbnail"] as? [String: Any],
-               let thumbs = (thumb["musicThumbnailRenderer"] as? [String: Any])?["thumbnail"] as? [String: Any] ?? thumb["thumbnail"] as? [String: Any],
-               let list = (thumbs as? [String: Any])?["thumbnails"] as? [[String: Any]],
-               let last = list.last,
-               let urlStr = last["url"] as? String {
-                artworkURL = URL(string: urlStr)
+            if let thumb = vh["thumbnail"] as? [String: Any] {
+                let thumbsDict = (thumb["musicThumbnailRenderer"] as? [String: Any])?["thumbnail"] as? [String: Any] ?? (thumb["thumbnail"] as? [String: Any])
+                if let thumbsList = thumbsDict?["thumbnails"] as? [[String: Any]],
+                   let last = thumbsList.last,
+                   let urlStr = last["url"] as? String {
+                    artworkURL = URL(string: urlStr)
+                }
             }
         }
         
@@ -211,10 +212,7 @@ public final class BrowseService: @unchecked Sendable {
             let shelf = s["musicShelfRenderer"] as? [String: Any] ?? s["musicCarouselShelfRenderer"] as? [String: Any]
             guard let shelf = shelf, let items = shelf["contents"] as? [[String: Any]] else { continue }
             
-            let headerTitle = (shelf["title"] as? [String: Any])?["runs"] as? [[String: Any]] ??
-                ((shelf["header"] as? [String: Any])?["musicCarouselShelfBasicHeaderRenderer"] as? [String: Any])?["title"] as? [String: Any]? ?? [:]
-            let sectionName = (headerTitle as? [String: Any])?["runs"] as? [[String: Any]]
-            let titleText = sectionName?.first?["text"] as? String ?? ""
+            let titleText = extractShelfTitle(from: shelf)
             
             // Top Songs
             if titleText.lowercased().contains("song") || topSongs.isEmpty {
@@ -295,5 +293,24 @@ public final class BrowseService: @unchecked Sendable {
         }
         
         return Artist(id: id, name: name, artworkURL: artworkURL, topSongs: topSongs, albums: albums)
+    }
+    
+    // MARK: - Helper to Extract Shelf Title
+    private func extractShelfTitle(from shelf: [String: Any]) -> String {
+        if let titleObj = shelf["title"] as? [String: Any],
+           let runs = titleObj["runs"] as? [[String: Any]],
+           let first = runs.first,
+           let text = first["text"] as? String {
+            return text
+        }
+        if let header = shelf["header"] as? [String: Any],
+           let basic = header["musicCarouselShelfBasicHeaderRenderer"] as? [String: Any],
+           let titleObj = basic["title"] as? [String: Any],
+           let runs = titleObj["runs"] as? [[String: Any]],
+           let first = runs.first,
+           let text = first["text"] as? String {
+            return text
+        }
+        return ""
     }
 }
