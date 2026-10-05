@@ -42,7 +42,7 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {
             print("[WKAudioEngine] AVAudioSession setup error:", error)

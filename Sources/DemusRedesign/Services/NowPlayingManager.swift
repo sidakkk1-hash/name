@@ -85,7 +85,9 @@ public final class NowPlayingManager: @unchecked Sendable {
     ) {
         #if canImport(MediaPlayer)
         guard let song = song else {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            Task { @MainActor in
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            }
             cachedArtwork = nil
             lastArtworkSongId = nil
             return
@@ -94,11 +96,9 @@ public final class NowPlayingManager: @unchecked Sendable {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: song.title,
             MPMediaItemPropertyArtist: song.artistName,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
-            MPMediaItemPropertyPlaybackDuration: duration > 0 ? duration : 180,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
+            MPMediaItemPropertyPlaybackDuration: NSNumber(value: duration > 0 ? duration : 180),
+            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? 1.0 : 0.0)
         ]
         
         if let album = song.albumTitle, !album.isEmpty {
@@ -110,7 +110,10 @@ public final class NowPlayingManager: @unchecked Sendable {
             info[MPMediaItemPropertyArtwork] = cached
         }
         
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let initialInfo = info
+        Task { @MainActor in
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
+        }
         
         // Load artwork if needed
         if lastArtworkSongId != song.id {
@@ -119,12 +122,16 @@ public final class NowPlayingManager: @unchecked Sendable {
             
             if let artworkURL = song.artworkURL {
                 #if canImport(UIKit)
-                // First check in-memory cache
-                if let cachedImage = ImageCache.shared.get(for: artworkURL) {
+                // First check in-memory cache safely
+                if let cachedImage = ImageCache.shared.get(for: artworkURL),
+                   cachedImage.size.width > 0, cachedImage.size.height > 0 {
                     let artwork = MPMediaItemArtwork(boundsSize: cachedImage.size) { _ in cachedImage }
                     self.cachedArtwork = artwork
-                    info[MPMediaItemPropertyArtwork] = artwork
-                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                    var current = initialInfo
+                    current[MPMediaItemPropertyArtwork] = artwork
+                    Task { @MainActor in
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = current
+                    }
                     return
                 }
                 
@@ -133,7 +140,7 @@ public final class NowPlayingManager: @unchecked Sendable {
                 Task {
                     do {
                         let (data, _) = try await URLSession.shared.data(from: artworkURL)
-                        if let image = UIImage(data: data) {
+                        if let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 {
                             ImageCache.shared.set(image, for: artworkURL)
                             await MainActor.run {
                                 guard self.lastArtworkSongId == songId else { return }

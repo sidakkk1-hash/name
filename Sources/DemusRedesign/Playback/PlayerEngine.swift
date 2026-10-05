@@ -73,7 +73,7 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
             try session.setActive(true)
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
@@ -168,7 +168,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.currentSong = upgradedSong
         self.currentTime = 0
         self.duration = upgradedSong.duration > 0 ? upgradedSong.duration : 180
-        self.isPlaying = true
+        self.isPlaying = false
         self.isLoading = true
         self.userIntentPlaying = true
         let now = Date().timeIntervalSince1970
@@ -225,7 +225,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.currentSong = target
         self.currentTime = 0
         self.duration = target.duration > 0 ? target.duration : 180
-        self.isPlaying = true
+        self.isPlaying = false
         self.isLoading = true
         self.userIntentPlaying = true
         let now = Date().timeIntervalSince1970
