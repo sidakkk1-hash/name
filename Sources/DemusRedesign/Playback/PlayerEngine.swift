@@ -23,6 +23,9 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isRepeat: Bool = false
     public var errorMessage: String?
     public private(set) var isUsingNativeEngine: Bool = false
+    public var activeEngineName: String {
+        isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine fallback"
+    }
     public var volume: Double = 1.0 {
         didSet {
             let v = volume
@@ -240,6 +243,11 @@ public final class PlayerEngine: @unchecked Sendable {
                 self.isUsingNativeEngine = true
                 WKAudioEngine.shared.pause()
             } else {
+                print("""
+                ==================================================
+                Playback Engine: WKAudioEngine fallback
+                ==================================================
+                """)
                 print("[PlayerEngine] NativeAudioEngine stream resolution failed; falling back to WKAudioEngine for \(currentVideoId)")
                 self.isUsingNativeEngine = false
                 NativeAudioEngine.shared.cleanupPlayer()
@@ -501,8 +509,12 @@ public final class PlayerEngine: @unchecked Sendable {
 // MARK: - NativeAudioEngineDelegate
 extension PlayerEngine: NativeAudioEngineDelegate {
     public func nativeAudioEngineDidReady() {
-        print("[PlayerEngine] NativeAudioEngine is ready and playing.")
         self.isUsingNativeEngine = true
+        print("""
+        ==================================================
+        Playback Engine: Native AVPlayer
+        ==================================================
+        """)
     }
     
     public func nativeAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
@@ -530,9 +542,13 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     }
     
     public func nativeAudioEngineDidFail(error: String) {
-        print("[PlayerEngine] NativeAudioEngine failed: \(error). Falling back to WKAudioEngine.")
-        guard isUsingNativeEngine else { return }
         self.isUsingNativeEngine = false
+        print("""
+        ==================================================
+        Playback Engine: WKAudioEngine fallback
+        ==================================================
+        """)
+        print("[PlayerEngine] NativeAudioEngine failed: \(error). Falling back to WKAudioEngine.")
         if let current = currentSong {
             Task { @MainActor in
                 NativeAudioEngine.shared.cleanupPlayer()
@@ -545,6 +561,13 @@ extension PlayerEngine: NativeAudioEngineDelegate {
 // MARK: - WKAudioEngineDelegate
 extension PlayerEngine: WKAudioEngineDelegate {
     public func audioEngineDidReady() {
+        if !isUsingNativeEngine {
+            print("""
+            ==================================================
+            Playback Engine: WKAudioEngine fallback
+            ==================================================
+            """)
+        }
         print("[PlayerEngine] WKAudioEngine ready")
     }
     

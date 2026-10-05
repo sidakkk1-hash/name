@@ -87,6 +87,14 @@ public struct SettingsV: View {
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 14))
                     }
+                    
+                    HStack {
+                        Text("Playback Engine")
+                        Spacer()
+                        Text(PlayerEngine.shared.activeEngineName)
+                            .foregroundStyle(AppleMusicTheme.accent)
+                            .font(.system(size: 14, weight: .semibold))
+                    }
                 }
                 
                 // Theme & Accent Color

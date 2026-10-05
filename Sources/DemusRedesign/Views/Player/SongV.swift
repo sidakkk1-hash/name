@@ -152,6 +152,10 @@ public struct SongV: View {
                     ShareLink(item: "\(song.title) - \(song.artistName)") {
                         Label("Share Song...", systemImage: "square.and.arrow.up")
                     }
+                    
+                    Section("Audio Engine") {
+                        Label(player.activeEngineName, systemImage: player.isUsingNativeEngine ? "waveform.badge.checkmark" : "globe")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
