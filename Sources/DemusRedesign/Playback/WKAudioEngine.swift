@@ -33,16 +33,16 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     override public init() {
         super.init()
         setupAudioSession()
-        setupSilentAudioKeeper()
+        // Controlled isolation: setupSilentAudioKeeper()
         setupWebView()
-        setupBackgroundObservers()
+        // Controlled isolation: setupBackgroundObservers()
     }
     
     // MARK: - Audio Session Setup
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
         } catch {
             print("[WKAudioEngine] AVAudioSession setup error:", error)

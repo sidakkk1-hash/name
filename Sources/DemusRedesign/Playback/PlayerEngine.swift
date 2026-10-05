@@ -73,7 +73,7 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
@@ -176,7 +176,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.lastActionTime = now
         self.errorMessage = nil
         
-        persistCurrentSession(song: upgradedSong)
+        // Controlled isolation: persistCurrentSession(song: upgradedSong)
         
         // Add to persistent library history
         LibraryRepository.shared.addHistory(upgradedSong)
@@ -233,7 +233,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.lastActionTime = now
         self.errorMessage = nil
         
-        persistCurrentSession(song: target)
+        // Controlled isolation: persistCurrentSession(song: target)
         LibraryRepository.shared.addHistory(target)
         updateLockScreen()
         
@@ -418,12 +418,7 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     private func updateLockScreen() {
-        NowPlayingManager.shared.updateNowPlaying(
-            song: currentSong,
-            currentTime: currentTime,
-            duration: duration,
-            isPlaying: isPlaying
-        )
+        // Controlled isolation: temporarily disabled to guarantee zero lockscreen crash
     }
     
     private func handleSongDidEnd() {
