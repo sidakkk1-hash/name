@@ -1,0 +1,46 @@
+﻿workflows:
+  ios-build:
+    name: Demus iOS Build
+    max_build_duration: 30
+    instance_type: mac_mini_m2   # Fast Apple Silicon — free tier eligible
+
+    environment:
+      xcode: latest              # Xcode 16.x automatically
+      cocoapods: default
+
+    scripts:
+      - name: Install XcodeGen
+        script: brew install xcodegen
+
+      - name: Generate Xcode Project
+        script: xcodegen generate
+
+      - name: Build IPA (no code signing)
+        script: |
+          xcodebuild \
+            -project DemusRedesign.xcodeproj \
+            -scheme DemusRedesign \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package IPA
+        script: |
+          mkdir -p Payload
+          cp -r ./build/Build/Products/Release-iphoneos/DemusRedesign.app Payload/
+          zip -r DemusRedesign.ipa Payload/
+          echo "IPA ready"
+
+    artifacts:
+      - DemusRedesign.ipa
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
