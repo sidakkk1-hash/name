@@ -22,11 +22,13 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
+    public private(set) var isUsingNativeEngine: Bool = false
     public var volume: Double = 1.0 {
         didSet {
             let v = volume
             Task { @MainActor in
                 WKAudioEngine.shared.setVolume(v)
+                NativeAudioEngine.shared.setVolume(v)
             }
         }
     }
@@ -45,6 +47,7 @@ public final class PlayerEngine: @unchecked Sendable {
         restoreLastSession()
         Task { @MainActor in
             WKAudioEngine.shared.delegate = self
+            NativeAudioEngine.shared.delegate = self
         }
         NowPlayingManager.shared.setupRemoteCommands(player: self)
     }
@@ -100,7 +103,11 @@ public final class PlayerEngine: @unchecked Sendable {
             
             if type == .began {
                 Task { @MainActor in
-                    WKAudioEngine.shared.pause()
+                    if self.isUsingNativeEngine {
+                        NativeAudioEngine.shared.pause()
+                    } else {
+                        WKAudioEngine.shared.pause()
+                    }
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
@@ -109,7 +116,11 @@ public final class PlayerEngine: @unchecked Sendable {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         Task { @MainActor in
-                            WKAudioEngine.shared.play()
+                            if self.isUsingNativeEngine {
+                                NativeAudioEngine.shared.play()
+                            } else {
+                                WKAudioEngine.shared.play()
+                            }
                         }
                         self.isPlaying = true
                         self.updateLockScreen()
@@ -131,7 +142,11 @@ public final class PlayerEngine: @unchecked Sendable {
             // If headphones unplugged or Bluetooth disconnected, pause playback
             if reason == .oldDeviceUnavailable {
                 Task { @MainActor in
-                    WKAudioEngine.shared.pause()
+                    if self.isUsingNativeEngine {
+                        NativeAudioEngine.shared.pause()
+                    } else {
+                        WKAudioEngine.shared.pause()
+                    }
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
@@ -197,6 +212,12 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         let diagSession = AVAudioSession.sharedInstance()
         let diagCat = diagSession.category.rawValue
+        let songToPlay = upgradedSong
+        let currentVideoId = upgradedSong.id
+        
+        #if canImport(AVFAudio)
+        let diagSession = AVAudioSession.sharedInstance()
+        let diagCat = diagSession.category.rawValue
         let diagOther = diagSession.isOtherAudioPlaying
         #else
         let diagCat = "unknown"
@@ -209,15 +230,26 @@ public final class PlayerEngine: @unchecked Sendable {
         #endif
         print("""
         [AudioDiagnostics]
-          CURRENT AUDIO ENGINE: WKAudioEngine (WKWebView)
+          CURRENT AUDIO ENGINE: \(isUsingNativeEngine ? "NativeAudioEngine (AVPlayer)" : "WKAudioEngine (WKWebView)")
           application state: \(diagState)
           AVAudioSession category: \(diagCat)
           AVAudioSession isOtherAudioPlaying: \(diagOther)
         """)
         
-        // Trigger Demus WebKit Audio Engine (Zero 403 Forbidden)
+        // Attempt Native Audio Engine (AVPlayer) first for rock-solid background audio
         Task { @MainActor in
-            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+            print("[PlayerEngine] Attempting playback via NativeAudioEngine for: \(songToPlay.title) (\(currentVideoId))")
+            let nativeSuccess = await NativeAudioEngine.shared.loadAndPlay(song: songToPlay)
+            if nativeSuccess {
+                print("[PlayerEngine] NativeAudioEngine stream resolved; preparing AVPlayer.")
+                self.isUsingNativeEngine = true
+                WKAudioEngine.shared.pause()
+            } else {
+                print("[PlayerEngine] NativeAudioEngine stream resolution failed; falling back to WKAudioEngine for \(currentVideoId)")
+                self.isUsingNativeEngine = false
+                NativeAudioEngine.shared.cleanupPlayer()
+                WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+            }
         }
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music
@@ -246,31 +278,7 @@ public final class PlayerEngine: @unchecked Sendable {
         }
         
         guard let target = queue.first else { return }
-        
-        self.currentSong = target
-        self.currentTime = 0
-        self.duration = target.duration > 0 ? target.duration : 180
-        self.isPlaying = false
-        self.isLoading = true
-        self.userIntentPlaying = true
-        let now = Date().timeIntervalSince1970
-        self.lastUserToggleTime = now
-        self.lastActionTime = now
-        self.errorMessage = nil
-        
-        // Controlled isolation: persistCurrentSession(song: target)
-        LibraryRepository.shared.addHistory(target)
-        updateLockScreen()
-        
-        let currentVideoId = target.id
-        Task { @MainActor in
-            WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
-        }
-        
-        let songForLyrics = target
-        Task {
-            await LyricsService.shared.preloadLyrics(song: songForLyrics)
-        }
+        play(song: target)
     }
     
     private func fetchRadioQueue(for videoId: String) {
@@ -318,7 +326,11 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isPlaying = false
             self.isLoading = false
             Task { @MainActor in
-                WKAudioEngine.shared.pause()
+                if self.isUsingNativeEngine {
+                    NativeAudioEngine.shared.pause()
+                } else {
+                    WKAudioEngine.shared.pause()
+                }
             }
         } else {
             userIntentPlaying = true
@@ -326,7 +338,11 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isLoading = true
             if currentSong != nil {
                 Task { @MainActor in
-                    WKAudioEngine.shared.play()
+                    if self.isUsingNativeEngine {
+                        NativeAudioEngine.shared.play()
+                    } else {
+                        WKAudioEngine.shared.play()
+                    }
                 }
             } else if let first = queue.first {
                 play(song: first)
@@ -358,7 +374,11 @@ public final class PlayerEngine: @unchecked Sendable {
         } else {
             isPlaying = false
             Task { @MainActor in
-                WKAudioEngine.shared.pause()
+                if self.isUsingNativeEngine {
+                    NativeAudioEngine.shared.pause()
+                } else {
+                    WKAudioEngine.shared.pause()
+                }
             }
             updateLockScreen()
         }
@@ -381,7 +401,11 @@ public final class PlayerEngine: @unchecked Sendable {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
         Task { @MainActor in
-            WKAudioEngine.shared.seek(to: clamped)
+            if self.isUsingNativeEngine {
+                NativeAudioEngine.shared.seek(to: clamped)
+            } else {
+                WKAudioEngine.shared.seek(to: clamped)
+            }
         }
         updateLockScreen()
     }
@@ -455,17 +479,70 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     private func updateLockScreen() {
-        // Controlled isolation: temporarily disabled to guarantee zero lockscreen crash
+        NowPlayingManager.shared.updateNowPlaying(
+            song: currentSong,
+            currentTime: currentTime,
+            duration: duration,
+            isPlaying: isPlaying
+        )
     }
     
     private func handleSongDidEnd() {
         if isRepeat {
             seek(to: 0)
             Task { @MainActor in
-                WKAudioEngine.shared.play()
+                if self.isUsingNativeEngine {
+                    NativeAudioEngine.shared.play()
+                } else {
+                    WKAudioEngine.shared.play()
+                }
             }
         } else {
             next()
+        }
+    }
+}
+
+// MARK: - NativeAudioEngineDelegate
+extension PlayerEngine: NativeAudioEngineDelegate {
+    public func nativeAudioEngineDidReady() {
+        print("[PlayerEngine] NativeAudioEngine is ready and playing.")
+        self.isUsingNativeEngine = true
+    }
+    
+    public func nativeAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
+        guard isUsingNativeEngine else { return }
+        self.isPlaying = isPlaying
+        self.isLoading = isLoading
+        self.userIntentPlaying = isPlaying
+        updateLockScreen()
+    }
+    
+    public func nativeAudioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
+        guard isUsingNativeEngine else { return }
+        self.currentTime = currentTime
+        if duration > 0 {
+            self.duration = duration
+        }
+        if Int(currentTime) % 5 == 0 {
+            updateLockScreen()
+        }
+    }
+    
+    public func nativeAudioEngineDidEnd() {
+        guard isUsingNativeEngine else { return }
+        handleSongDidEnd()
+    }
+    
+    public func nativeAudioEngineDidFail(error: String) {
+        print("[PlayerEngine] NativeAudioEngine failed: \(error). Falling back to WKAudioEngine.")
+        guard isUsingNativeEngine else { return }
+        self.isUsingNativeEngine = false
+        if let current = currentSong {
+            Task { @MainActor in
+                NativeAudioEngine.shared.cleanupPlayer()
+                WKAudioEngine.shared.loadAndPlay(videoId: current.id)
+            }
         }
     }
 }
@@ -477,6 +554,7 @@ extension PlayerEngine: WKAudioEngineDelegate {
     }
     
     public func audioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
+        guard !isUsingNativeEngine else { return }
         let now = Date().timeIntervalSince1970
         let inGracePeriod = (now - lastUserToggleTime) < 0.6
         
@@ -505,6 +583,7 @@ extension PlayerEngine: WKAudioEngineDelegate {
     }
     
     public func audioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
+        guard !isUsingNativeEngine else { return }
         self.currentTime = currentTime
         if duration > 0 {
             self.duration = duration
@@ -515,10 +594,12 @@ extension PlayerEngine: WKAudioEngineDelegate {
     }
     
     public func audioEngineDidEnd() {
+        guard !isUsingNativeEngine else { return }
         handleSongDidEnd()
     }
     
     public func audioEngineDidFail(error: String) {
+        guard !isUsingNativeEngine else { return }
         self.isLoading = false
         self.errorMessage = error
         print("[PlayerEngine] WKAudioEngine error:", error)

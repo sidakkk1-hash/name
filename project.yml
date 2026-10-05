@@ -21,10 +21,12 @@ targets:
       properties:
         UIBackgroundModes:
           - audio
+        UILaunchStoryboardName: LaunchScreen
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.demusapp.redesign
       INFOPLIST_FILE: Sources/DemusRedesign/Info.plist
       GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
       CURRENT_PROJECT_VERSION: 1
       MARKETING_VERSION: "2.0.22"
       CODE_SIGNING_ALLOWED: NO

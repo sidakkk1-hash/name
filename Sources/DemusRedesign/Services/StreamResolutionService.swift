@@ -16,13 +16,38 @@ public final class StreamResolutionService: @unchecked Sendable {
         public let isHLS: Bool
         public let duration: TimeInterval
         public let bitrate: Int?
+        public let mimeType: String?
+        public let headers: [String: String]?
+        
+        public init(
+            url: URL,
+            isHLS: Bool,
+            duration: TimeInterval,
+            bitrate: Int? = nil,
+            mimeType: String? = nil,
+            headers: [String: String]? = nil
+        ) {
+            self.url = url
+            self.isHLS = isHLS
+            self.duration = duration
+            self.bitrate = bitrate
+            self.mimeType = mimeType
+            self.headers = headers
+        }
     }
     
     // MARK: - Resolve Playable Audio Stream for Song
     public func resolveStream(for song: Song) async throws -> ResolvedStream {
         // If song already has a direct streamURL, use it
         if let direct = song.streamURL {
-            return ResolvedStream(url: direct, isHLS: direct.pathExtension == "m3u8", duration: song.duration, bitrate: nil)
+            return ResolvedStream(
+                url: direct,
+                isHLS: direct.pathExtension == "m3u8",
+                duration: song.duration,
+                bitrate: nil,
+                mimeType: "audio/mp4",
+                headers: nil
+            )
         }
         
         let videoId = song.id
@@ -56,23 +81,50 @@ public final class StreamResolutionService: @unchecked Sendable {
     private func parseStreamingData(json: [String: Any]) -> ResolvedStream? {
         guard let streamingData = json["streamingData"] as? [String: Any] else { return nil }
         
+        let defaultHeaders: [String: String] = [
+            "User-Agent": "com.google.ios.youtube/20.25.4 (iPhone17,1; U; CPU iOS 18_5 like Mac OS X)",
+            "Referer": "https://music.youtube.com"
+        ]
+        
         // Check for HLS Manifest
         if let hlsString = streamingData["hlsManifestUrl"] as? String, let hlsURL = URL(string: hlsString) {
-            return ResolvedStream(url: hlsURL, isHLS: true, duration: 0, bitrate: nil)
+            return ResolvedStream(
+                url: hlsURL,
+                isHLS: true,
+                duration: 0,
+                bitrate: nil,
+                mimeType: "application/x-mpegURL",
+                headers: defaultHeaders
+            )
         }
         
         // Check for Adaptive Audio Formats
         if let adaptive = streamingData["adaptiveFormats"] as? [[String: Any]] {
             let audioFormats = adaptive.filter { ($0["mimeType"] as? String)?.contains("audio") == true }
-            // Sort by highest bitrate
-            let sorted = audioFormats.sorted {
-                ($0["bitrate"] as? Int ?? 0) > ($1["bitrate"] as? Int ?? 0)
+            // Sort: prioritize audio/mp4 (Apple native hardware AAC) over audio/webm, then by bitrate
+            let sorted = audioFormats.sorted { f1, f2 in
+                let mime1 = f1["mimeType"] as? String ?? ""
+                let mime2 = f2["mimeType"] as? String ?? ""
+                let isMp4_1 = mime1.contains("audio/mp4")
+                let isMp4_2 = mime2.contains("audio/mp4")
+                if isMp4_1 != isMp4_2 {
+                    return isMp4_1 && !isMp4_2
+                }
+                return (f1["bitrate"] as? Int ?? 0) > (f2["bitrate"] as? Int ?? 0)
             }
             for fmt in sorted {
                 if let urlStr = fmt["url"] as? String, let audioURL = URL(string: urlStr) {
                     let bitrate = fmt["bitrate"] as? Int
+                    let mime = fmt["mimeType"] as? String
                     let durationMs = Double(fmt["approxDurationMs"] as? String ?? "0") ?? 0
-                    return ResolvedStream(url: audioURL, isHLS: false, duration: durationMs / 1000.0, bitrate: bitrate)
+                    return ResolvedStream(
+                        url: audioURL,
+                        isHLS: false,
+                        duration: durationMs / 1000.0,
+                        bitrate: bitrate,
+                        mimeType: mime,
+                        headers: defaultHeaders
+                    )
                 }
             }
         }
@@ -81,7 +133,14 @@ public final class StreamResolutionService: @unchecked Sendable {
         if let formats = streamingData["formats"] as? [[String: Any]] {
             for fmt in formats {
                 if let urlStr = fmt["url"] as? String, let url = URL(string: urlStr) {
-                    return ResolvedStream(url: url, isHLS: false, duration: 0, bitrate: fmt["bitrate"] as? Int)
+                    return ResolvedStream(
+                        url: url,
+                        isHLS: false,
+                        duration: 0,
+                        bitrate: fmt["bitrate"] as? Int,
+                        mimeType: fmt["mimeType"] as? String,
+                        headers: defaultHeaders
+                    )
                 }
             }
         }
