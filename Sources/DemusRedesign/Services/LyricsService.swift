@@ -1,5 +1,18 @@
 import Foundation
 
+// MARK: - LyricsCache
+actor LyricsCache {
+    private var storage: [String: [LyricsService.LyricLine]] = [:]
+    
+    func get(_ key: String) -> [LyricsService.LyricLine]? {
+        storage[key]
+    }
+    
+    func set(_ key: String, lines: [LyricsService.LyricLine]) {
+        storage[key] = lines
+    }
+}
+
 // MARK: - LyricsService
 /// High-speed lyrics service querying lrclib.net with intelligent title cleaning,
 /// fuzzy search fallbacks, and persistent in-memory caching for 0ms instant display.
@@ -7,8 +20,7 @@ public final class LyricsService: @unchecked Sendable {
     public static let shared = LyricsService()
     
     private let client: HTTPClient
-    private var cache: [String: [LyricLine]] = [:]
-    private let lock = NSLock()
+    private let cache = LyricsCache()
     
     public init(client: HTTPClient = .shared) {
         self.client = client
@@ -34,12 +46,9 @@ public final class LyricsService: @unchecked Sendable {
     public func fetchLyrics(trackName: String, artistName: String, duration: Int? = nil, videoId: String? = nil) async -> [LyricLine] {
         let cacheKey = videoId ?? "\(trackName.lowercased())_\(artistName.lowercased())"
         
-        lock.lock()
-        if let cached = cache[cacheKey], !cached.isEmpty {
-            lock.unlock()
+        if let cached = await cache.get(cacheKey), !cached.isEmpty {
             return cached
         }
-        lock.unlock()
         
         let cleanedTrack = cleanTrackTitle(trackName)
         let cleanedArtist = cleanArtistName(artistName)
@@ -47,7 +56,7 @@ public final class LyricsService: @unchecked Sendable {
         // 1. Try Direct Exact Match
         if let directURL = Endpoints.lyrics(trackName: cleanedTrack, artistName: cleanedArtist, duration: duration) {
             if let lines = await fetchFromURL(directURL), !lines.isEmpty {
-                cacheLines(lines, for: cacheKey)
+                await cache.set(cacheKey, lines: lines)
                 return lines
             }
         }
@@ -57,18 +66,12 @@ public final class LyricsService: @unchecked Sendable {
         if let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
            let searchURL = URL(string: "https://lrclib.net/api/search?q=\(encodedQuery)") {
             if let lines = await fetchFromSearchURL(searchURL), !lines.isEmpty {
-                cacheLines(lines, for: cacheKey)
+                await cache.set(cacheKey, lines: lines)
                 return lines
             }
         }
         
         return []
-    }
-    
-    private func cacheLines(_ lines: [LyricLine], for key: String) {
-        lock.lock()
-        cache[key] = lines
-        lock.unlock()
     }
     
     private func fetchFromURL(_ url: URL) async -> [LyricLine]? {

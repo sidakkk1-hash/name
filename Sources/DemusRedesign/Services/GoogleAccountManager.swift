@@ -9,6 +9,7 @@ public final class GoogleAccountManager: @unchecked Sendable {
     
     public var isLoggedIn: Bool = false
     public var userEmail: String?
+    public var userName: String? { userEmail }
     public var cookiesHeader: String = ""
     
     private let cookiesKey = "demus_google_cookies"
