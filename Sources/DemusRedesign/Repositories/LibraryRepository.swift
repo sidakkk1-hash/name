@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - LibraryRepository
-/// Manages user's saved Library tracks, favorites, custom playlists, and playback history.
+/// Manages user's saved Library tracks, favorites, custom playlists, listening history, and search history.
 public final class LibraryRepository: @unchecked Sendable {
     public static let shared = LibraryRepository()
     
@@ -12,11 +12,13 @@ public final class LibraryRepository: @unchecked Sendable {
         var librarySongs: [Song]
         var playlists: [Playlist]
         var history: [Song]
+        var searchHistory: [String]?
     }
     
     public var librarySongs: [Song] = []
     public var playlists: [Playlist] = []
     public var history: [Song] = []
+    public var searchHistory: [String] = []
     
     public init() {
         let urls = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
@@ -25,6 +27,7 @@ public final class LibraryRepository: @unchecked Sendable {
         load()
     }
     
+    // MARK: - Library Songs
     public func addSong(_ song: Song) {
         if !librarySongs.contains(where: { $0.id == song.id }) {
             librarySongs.insert(song, at: 0)
@@ -37,6 +40,11 @@ public final class LibraryRepository: @unchecked Sendable {
         save()
     }
     
+    public func isInLibrary(id: String) -> Bool {
+        librarySongs.contains(where: { $0.id == id })
+    }
+    
+    // MARK: - Favorites
     public func toggleFavorite(for song: Song) {
         if let index = librarySongs.firstIndex(where: { $0.id == song.id }) {
             librarySongs[index].isFavorite.toggle()
@@ -48,11 +56,38 @@ public final class LibraryRepository: @unchecked Sendable {
         save()
     }
     
+    public func isFavorite(id: String) -> Bool {
+        librarySongs.contains(where: { $0.id == id && $0.isFavorite })
+    }
+    
+    // MARK: - Playlists
     public func addPlaylist(_ playlist: Playlist) {
         playlists.insert(playlist, at: 0)
         save()
     }
     
+    public func deletePlaylist(id: String) {
+        playlists.removeAll(where: { $0.id == id })
+        save()
+    }
+    
+    public func addSong(_ song: Song, to playlistId: String) {
+        if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
+            if !playlists[idx].songs.contains(where: { $0.id == song.id }) {
+                playlists[idx].songs.append(song)
+                save()
+            }
+        }
+    }
+    
+    public func removeSong(songId: String, from playlistId: String) {
+        if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
+            playlists[idx].songs.removeAll(where: { $0.id == songId })
+            save()
+        }
+    }
+    
+    // MARK: - Listening History
     public func addHistory(_ song: Song) {
         history.removeAll(where: { $0.id == song.id })
         history.insert(song, at: 0)
@@ -62,8 +97,36 @@ public final class LibraryRepository: @unchecked Sendable {
         save()
     }
     
+    // MARK: - Search History
+    public func addSearchQuery(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        searchHistory.removeAll(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame })
+        searchHistory.insert(trimmed, at: 0)
+        if searchHistory.count > 20 {
+            searchHistory = Array(searchHistory.prefix(20))
+        }
+        save()
+    }
+    
+    public func removeSearchQuery(_ query: String) {
+        searchHistory.removeAll(where: { $0 == query })
+        save()
+    }
+    
+    public func clearSearchHistory() {
+        searchHistory.removeAll()
+        save()
+    }
+    
+    // MARK: - Persistence
     private func save() {
-        let data = StorageData(librarySongs: librarySongs, playlists: playlists, history: history)
+        let data = StorageData(
+            librarySongs: librarySongs,
+            playlists: playlists,
+            history: history,
+            searchHistory: searchHistory
+        )
         if let encoded = try? JSONEncoder().encode(data) {
             try? encoded.write(to: storageURL)
         }
@@ -77,5 +140,6 @@ public final class LibraryRepository: @unchecked Sendable {
         self.librarySongs = decoded.librarySongs
         self.playlists = decoded.playlists
         self.history = decoded.history
+        self.searchHistory = decoded.searchHistory ?? []
     }
 }

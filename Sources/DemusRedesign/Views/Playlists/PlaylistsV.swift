@@ -87,6 +87,24 @@ public struct PlaylistsV: View {
                                 }
                             }
                             .buttonStyle(.appleMusicCard)
+                            .contextMenu {
+                                if !playlist.songs.isEmpty {
+                                    Button {
+                                        player.playAll(songs: playlist.songs, startingAt: 0, shuffle: false)
+                                    } label: {
+                                        Label("Play", systemImage: "play.fill")
+                                    }
+                                }
+                                
+                                Button(role: .destructive) {
+                                    withAnimation {
+                                        LibraryRepository.shared.deletePlaylist(id: playlist.id)
+                                        playlists.removeAll(where: { $0.id == playlist.id })
+                                    }
+                                } label: {
+                                    Label("Delete Playlist", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, 16)

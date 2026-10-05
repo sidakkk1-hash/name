@@ -108,16 +108,41 @@ public struct SongV: View {
                     Button {
                         player.toggleFavorite(for: song.id)
                     } label: {
-                        Label(song.isFavorite ? "Unfavorite" : "Favorite", systemImage: song.isFavorite ? "star.fill" : "star")
+                        Label(
+                            LibraryRepository.shared.isFavorite(id: song.id) ? "Unfavorite" : "Favorite",
+                            systemImage: LibraryRepository.shared.isFavorite(id: song.id) ? "star.fill" : "star"
+                        )
                     }
                     
-                    Button {
-                        // Add to Playlist
-                    } label: {
-                        Label("Add to a Playlist...", systemImage: "text.badge.plus")
+                    if LibraryRepository.shared.isInLibrary(id: song.id) {
+                        Button(role: .destructive) {
+                            LibraryRepository.shared.removeSong(id: song.id)
+                        } label: {
+                            Label("Delete from Library", systemImage: "trash")
+                        }
+                    } else {
+                        Button {
+                            LibraryRepository.shared.addSong(song)
+                        } label: {
+                            Label("Add to Library", systemImage: "plus")
+                        }
                     }
                     
-                    ShareLink(item: song.title) {
+                    if !LibraryRepository.shared.playlists.isEmpty {
+                        Menu {
+                            ForEach(LibraryRepository.shared.playlists) { pl in
+                                Button {
+                                    LibraryRepository.shared.addSong(song, to: pl.id)
+                                } label: {
+                                    Text(pl.title)
+                                }
+                            }
+                        } label: {
+                            Label("Add to a Playlist...", systemImage: "text.badge.plus")
+                        }
+                    }
+                    
+                    ShareLink(item: "\(song.title) - \(song.artistName)") {
                         Label("Share Song...", systemImage: "square.and.arrow.up")
                     }
                 }

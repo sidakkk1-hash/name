@@ -6,8 +6,12 @@ public struct ArtistV: View {
     public let artist: Artist
     @Bindable public var player: PlayerEngine = .shared
     
+    @State private var currentArtist: Artist
+    @State private var isLoading: Bool = false
+    
     public init(artist: Artist) {
         self.artist = artist
+        self._currentArtist = State(initialValue: artist)
     }
     
     public var body: some View {
@@ -15,7 +19,7 @@ public struct ArtistV: View {
             VStack(spacing: 24) {
                 // Large Hero Artist Banner
                 ZStack(alignment: .bottomLeading) {
-                    if let url = artist.artworkURL {
+                    if let url = currentArtist.artworkURL {
                         AsyncImage(url: url) { phase in
                             switch phase {
                             case .success(let image):
@@ -41,45 +45,42 @@ public struct ArtistV: View {
                     
                     // Hero Overlay Content
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(artist.name)
+                        Text(currentArtist.name)
                             .font(.system(size: 32, weight: .bold))
                             .foregroundStyle(.white)
                         
-                        HStack(spacing: 12) {
-                            Button {
-                                if let first = artist.topSongs.first {
-                                    player.play(song: first)
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 15))
-                                    Text("Play")
-                                        .font(.system(size: 15, weight: .semibold))
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 9)
-                                .background(AppleMusicTheme.accent)
-                                .foregroundStyle(.white)
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Button {
-                                if let randomSong = artist.topSongs.randomElement() {
-                                    player.isShuffle = true
-                                    player.play(song: randomSong)
-                                }
-                            } label: {
-                                Image(systemName: "shuffle")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .padding(.horizontal, 14)
+                        if !currentArtist.topSongs.isEmpty {
+                            HStack(spacing: 12) {
+                                Button {
+                                    player.playAll(songs: currentArtist.topSongs, startingAt: 0, shuffle: false)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "play.fill")
+                                            .font(.system(size: 15))
+                                        Text("Play")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    }
+                                    .padding(.horizontal, 20)
                                     .padding(.vertical, 9)
-                                    .background(.ultraThinMaterial)
+                                    .background(AppleMusicTheme.accent)
                                     .foregroundStyle(.white)
                                     .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button {
+                                    player.playAll(songs: currentArtist.topSongs, startingAt: 0, shuffle: true)
+                                } label: {
+                                    Image(systemName: "shuffle")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 9)
+                                        .background(.ultraThinMaterial)
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(20)
@@ -87,28 +88,37 @@ public struct ArtistV: View {
                 .frame(height: 280)
                 .clipped()
                 
+                // Loading Spinner
+                if isLoading {
+                    ProgressView()
+                        .tint(AppleMusicTheme.accent)
+                        .padding(.vertical, 30)
+                }
+                
                 // Popular Songs Section
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(title: "Top Songs")
-                    
-                    LazyVStack(spacing: 8) {
-                        ForEach(artist.topSongs) { song in
-                            SongRow(song: song, isCurrentPlaying: player.currentSong?.id == song.id) {
-                                player.play(song: song)
+                if !currentArtist.topSongs.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(title: "Top Songs")
+                        
+                        LazyVStack(spacing: 8) {
+                            ForEach(Array(currentArtist.topSongs.enumerated()), id: \.element.id) { index, song in
+                                SongRow(song: song, isCurrentPlaying: player.currentSong?.id == song.id) {
+                                    player.playAll(songs: currentArtist.topSongs, startingAt: index, shuffle: false)
+                                }
+                                .padding(.horizontal, 16)
                             }
-                            .padding(.horizontal, 16)
                         }
                     }
                 }
                 
                 // Albums Section
-                if !artist.albums.isEmpty {
+                if !currentArtist.albums.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Albums")
                         
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
-                                ForEach(artist.albums) { album in
+                                ForEach(currentArtist.albums) { album in
                                     NavigationLink {
                                         AlbumV(album: album)
                                     } label: {
@@ -124,11 +134,29 @@ public struct ArtistV: View {
                     }
                 }
                 
+                if currentArtist.topSongs.isEmpty && currentArtist.albums.isEmpty && !isLoading {
+                    ContentUnavailableView {
+                        Label("No Content Available", systemImage: "music.mic")
+                    } description: {
+                        Text("No tracks or albums found for this artist.")
+                    }
+                    .padding(.top, 20)
+                }
+                
                 Spacer(minLength: 100) // Padding for CompactPlayer
             }
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if currentArtist.topSongs.isEmpty {
+                isLoading = true
+                if let fetched = await BrowseService.shared.fetchArtist(id: artist.id) {
+                    currentArtist = fetched
+                }
+                isLoading = false
+            }
+        }
     }
     
     private var heroPlaceholder: some View {

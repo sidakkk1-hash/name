@@ -53,12 +53,15 @@ public final class SearchVM: @unchecked Sendable {
     public var searchResults: [Song] = []
     public var matchedAlbums: [Album] = []
     public var matchedArtists: [Artist] = []
-    public var searchHistory: [String] = ["The Weeknd", "Daft Punk", "Billie Eilish", "Taylor Swift"]
+    public var searchHistory: [String] {
+        LibraryRepository.shared.searchHistory
+    }
     public var suggestions: [String] = []
     public var isSearching: Bool = false
     public var categories: [MusicCategory] = SearchCategories.all
     
     private var searchTask: Task<Void, Never>?
+    private var suggestionTask: Task<Void, Never>?
     
     public init() {}
     
@@ -91,12 +94,9 @@ public final class SearchVM: @unchecked Sendable {
             self.matchedArtists = response.artists
             self.isSearching = false
             
-            // Add to search history if not duplicate
-            if !self.searchHistory.contains(q) && response.songs.count > 0 {
-                self.searchHistory.insert(q, at: 0)
-                if self.searchHistory.count > 10 {
-                    self.searchHistory.removeLast()
-                }
+            // Persist to real search history if songs returned
+            if !response.songs.isEmpty {
+                LibraryRepository.shared.addSearchQuery(q)
             }
         }
     }

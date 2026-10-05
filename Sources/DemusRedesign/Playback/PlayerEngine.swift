@@ -4,7 +4,8 @@ import SwiftUI
 @preconcurrency import AVFoundation
 
 // MARK: - PlayerEngine
-/// Real AVPlayer-backed playback engine implementing Demus's HLS & direct stream playback.
+/// Real AVPlayer-backed playback engine implementing Demus's HLS & direct stream playback,
+/// background audio, Lock Screen controls, and interruption management.
 @Observable
 public final class PlayerEngine: @unchecked Sendable {
     public static let shared = PlayerEngine()
@@ -26,13 +27,18 @@ public final class PlayerEngine: @unchecked Sendable {
     private var timeObserverToken: Any?
     private var itemStatusObserver: NSKeyValueObservation?
     private var itemEndObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     
     public init() {
         configureAudioSession()
+        setupAudioObservers()
+        NowPlayingManager.shared.setupRemoteCommands(player: self)
     }
     
     deinit {
         cleanupPlayer()
+        removeAudioObservers()
     }
     
     // MARK: - Audio Session Configuration
@@ -40,7 +46,7 @@ public final class PlayerEngine: @unchecked Sendable {
         #if canImport(AVFAudio)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
             try session.setActive(true)
         } catch {
             print("Failed to configure AVAudioSession:", error)
@@ -48,13 +54,73 @@ public final class PlayerEngine: @unchecked Sendable {
         #endif
     }
     
+    // MARK: - Audio Interruption & Route Change Observers
+    private func setupAudioObservers() {
+        #if canImport(AVFAudio)
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            
+            if type == .began {
+                self.avPlayer?.pause()
+                self.isPlaying = false
+                self.updateLockScreen()
+            } else if type == .ended {
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        self.avPlayer?.play()
+                        self.isPlaying = true
+                        self.updateLockScreen()
+                    }
+                }
+            }
+        }
+        
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let userInfo = notification.userInfo,
+                  let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+            
+            // If headphones unplugged or Bluetooth disconnected, pause playback
+            if reason == .oldDeviceUnavailable {
+                self.avPlayer?.pause()
+                self.isPlaying = false
+                self.updateLockScreen()
+            }
+        }
+        #endif
+    }
+    
+    private func removeAudioObservers() {
+        if let obs = interruptionObserver {
+            NotificationCenter.default.removeObserver(obs)
+            interruptionObserver = nil
+        }
+        if let obs = routeChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+            routeChangeObserver = nil
+        }
+    }
+    
     // MARK: - Play Song with Real Stream Resolution
     public func play(song: Song) {
-        // If already playing this song, just toggle play
         if currentSong?.id == song.id, let player = avPlayer {
             if !isPlaying {
                 player.play()
                 isPlaying = true
+                updateLockScreen()
             }
             return
         }
@@ -66,13 +132,15 @@ public final class PlayerEngine: @unchecked Sendable {
         self.isLoading = true
         self.errorMessage = nil
         
-        // Add to history
+        // Add to persistent library history
         LibraryRepository.shared.addHistory(song)
         
-        // Add to queue if not present
+        // Update Queue
         if !queue.contains(where: { $0.id == song.id }) {
             queue.append(song)
         }
+        
+        updateLockScreen()
         
         Task { @MainActor in
             do {
@@ -86,11 +154,16 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
-    // MARK: - Load Stream into AVPlayer
+    // MARK: - Load Stream into AVPlayer with Headers
     private func loadAndPlay(streamURL: URL, expectedDuration: TimeInterval) {
         cleanupPlayer()
         
-        let playerItem = AVPlayerItem(url: streamURL)
+        // Configure AVURLAsset with Demus-matched User-Agent
+        let headers: [String: String] = [
+            "User-Agent": "com.google.ios.youtube/20.25.4 (iPhone17,1; U; CPU iOS 18_5 like Mac OS X)"
+        ]
+        let asset = AVURLAsset(url: streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let playerItem = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: playerItem)
         self.avPlayer = player
         
@@ -109,6 +182,7 @@ public final class PlayerEngine: @unchecked Sendable {
                     } else if expectedDuration > 0 {
                         self.duration = expectedDuration
                     }
+                    self.updateLockScreen()
                 } else if item.status == .failed {
                     self.isLoading = false
                     self.isPlaying = false
@@ -124,6 +198,10 @@ public final class PlayerEngine: @unchecked Sendable {
             let secs = time.seconds
             if !secs.isNaN && secs >= 0 {
                 self.currentTime = secs
+                // Periodic lock screen progress update every ~5s
+                if Int(secs) % 5 == 0 {
+                    self.updateLockScreen()
+                }
             }
         }
         
@@ -155,6 +233,7 @@ public final class PlayerEngine: @unchecked Sendable {
             player.play()
             isPlaying = true
         }
+        updateLockScreen()
     }
     
     public func next() {
@@ -180,6 +259,7 @@ public final class PlayerEngine: @unchecked Sendable {
         } else {
             isPlaying = false
             cleanupPlayer()
+            updateLockScreen()
         }
     }
     
@@ -201,6 +281,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.currentTime = clamped
         let cmTime = CMTime(seconds: clamped, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         avPlayer?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        updateLockScreen()
     }
     
     public func toggleFavorite(for songId: String) {
@@ -210,7 +291,74 @@ public final class PlayerEngine: @unchecked Sendable {
             if currentSong?.id == songId {
                 currentSong?.isFavorite = queue[idx].isFavorite
             }
+        } else if let song = currentSong, song.id == songId {
+            currentSong?.isFavorite.toggle()
+            if let updated = currentSong {
+                LibraryRepository.shared.toggleFavorite(for: updated)
+            }
         }
+    }
+    
+    // MARK: - Queue Management
+    public func playAll(songs: [Song], startingAt index: Int = 0, shuffle: Bool = false) {
+        guard !songs.isEmpty else { return }
+        if shuffle {
+            self.isShuffle = true
+            let shuffled = songs.shuffled()
+            self.queue = shuffled
+            if let first = shuffled.first {
+                play(song: first)
+            }
+        } else {
+            self.isShuffle = false
+            self.queue = songs
+            let validIndex = (index >= 0 && index < songs.count) ? index : 0
+            play(song: songs[validIndex])
+        }
+    }
+    
+    public func addToQueue(_ song: Song) {
+        if !queue.contains(where: { $0.id == song.id }) {
+            queue.append(song)
+        }
+    }
+    
+    public func playNext(_ song: Song) {
+        queue.removeAll(where: { $0.id == song.id })
+        if let current = currentSong, let idx = queue.firstIndex(where: { $0.id == current.id }) {
+            queue.insert(song, at: idx + 1)
+        } else {
+            queue.insert(song, at: 0)
+        }
+    }
+    
+    public func removeFromQueue(id: String) {
+        queue.removeAll(where: { $0.id == id })
+    }
+    
+    public func removeFromQueue(at offsets: IndexSet) {
+        queue.remove(atOffsets: offsets)
+    }
+    
+    public func moveInQueue(from source: IndexSet, to destination: Int) {
+        queue.move(fromOffsets: source, toOffset: destination)
+    }
+    
+    public func clearQueue() {
+        if let current = currentSong {
+            queue = [current]
+        } else {
+            queue.removeAll()
+        }
+    }
+    
+    private func updateLockScreen() {
+        NowPlayingManager.shared.updateNowPlaying(
+            song: currentSong,
+            currentTime: currentTime,
+            duration: duration,
+            isPlaying: isPlaying
+        )
     }
     
     private func handleSongDidEnd() {

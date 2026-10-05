@@ -64,10 +64,39 @@ public struct QueueV: View {
                 }
                 
                 // Playing Next Tracks
-                Section("Playing Next") {
-                    ForEach(player.queue.filter { $0.id != player.currentSong?.id }) { song in
-                        SongRow(song: song, isCurrentPlaying: false) {
-                            player.play(song: song)
+                let upcoming = player.queue.filter { $0.id != player.currentSong?.id }
+                Section {
+                    if upcoming.isEmpty {
+                        Text("No upcoming songs in queue")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(upcoming) { song in
+                            SongRow(song: song, isCurrentPlaying: false) {
+                                player.play(song: song)
+                            }
+                        }
+                        .onDelete { indexSet in
+                            let idsToRemove = indexSet.map { upcoming[$0].id }
+                            for id in idsToRemove {
+                                player.removeFromQueue(id: id)
+                            }
+                        }
+                        .onMove { indices, newOffset in
+                            player.moveInQueue(from: indices, to: newOffset)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Playing Next")
+                        Spacer()
+                        if !upcoming.isEmpty {
+                            Button("Clear") {
+                                player.clearQueue()
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppleMusicTheme.accent)
                         }
                     }
                 }
@@ -76,6 +105,10 @@ public struct QueueV: View {
             .navigationTitle("Playing Next")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                        .tint(AppleMusicTheme.accent)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()

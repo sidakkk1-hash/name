@@ -83,8 +83,55 @@ public struct SongRow: View {
                 }
                 
                 // Ellipsis Action Menu
-                Button {
-                    onMenu?()
+                Menu {
+                    Button {
+                        PlayerEngine.shared.playNext(song)
+                    } label: {
+                        Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    }
+                    
+                    Button {
+                        PlayerEngine.shared.addToQueue(song)
+                    } label: {
+                        Label("Play Later", systemImage: "text.line.last.and.arrowtriangle.forward")
+                    }
+                    
+                    Button {
+                        PlayerEngine.shared.toggleFavorite(for: song.id)
+                    } label: {
+                        Label(
+                            LibraryRepository.shared.isFavorite(id: song.id) ? "Unfavorite" : "Favorite",
+                            systemImage: LibraryRepository.shared.isFavorite(id: song.id) ? "star.fill" : "star"
+                        )
+                    }
+                    
+                    if LibraryRepository.shared.isInLibrary(id: song.id) {
+                        Button(role: .destructive) {
+                            LibraryRepository.shared.removeSong(id: song.id)
+                        } label: {
+                            Label("Delete from Library", systemImage: "trash")
+                        }
+                    } else {
+                        Button {
+                            LibraryRepository.shared.addSong(song)
+                        } label: {
+                            Label("Add to Library", systemImage: "plus")
+                        }
+                    }
+                    
+                    if !LibraryRepository.shared.playlists.isEmpty {
+                        Menu {
+                            ForEach(LibraryRepository.shared.playlists) { pl in
+                                Button {
+                                    LibraryRepository.shared.addSong(song, to: pl.id)
+                                } label: {
+                                    Text(pl.title)
+                                }
+                            }
+                        } label: {
+                            Label("Add to a Playlist...", systemImage: "text.badge.plus")
+                        }
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 17, weight: .medium))
@@ -97,6 +144,42 @@ public struct SongRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.appleMusicCard)
+        .contextMenu {
+            Button {
+                PlayerEngine.shared.playNext(song)
+            } label: {
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            
+            Button {
+                PlayerEngine.shared.addToQueue(song)
+            } label: {
+                Label("Play Later", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+            
+            Button {
+                PlayerEngine.shared.toggleFavorite(for: song.id)
+            } label: {
+                Label(
+                    LibraryRepository.shared.isFavorite(id: song.id) ? "Unfavorite" : "Favorite",
+                    systemImage: LibraryRepository.shared.isFavorite(id: song.id) ? "star.fill" : "star"
+                )
+            }
+            
+            if LibraryRepository.shared.isInLibrary(id: song.id) {
+                Button(role: .destructive) {
+                    LibraryRepository.shared.removeSong(id: song.id)
+                } label: {
+                    Label("Delete from Library", systemImage: "trash")
+                }
+            } else {
+                Button {
+                    LibraryRepository.shared.addSong(song)
+                } label: {
+                    Label("Add to Library", systemImage: "plus")
+                }
+            }
+        }
     }
     
     private var songSubtitle: String {

@@ -22,35 +22,51 @@ public struct SearchV: View {
                         // Recent Searches
                         if !searchVM.searchHistory.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Recent Searches")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                    .padding(.horizontal, 16)
+                                HStack {
+                                    Text("Recent Searches")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                    Spacer()
+                                    Button("Clear") {
+                                        LibraryRepository.shared.clearSearchHistory()
+                                    }
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(AppleMusicTheme.accent)
+                                }
+                                .padding(.horizontal, 16)
                                 
                                 ForEach(searchVM.searchHistory, id: \.self) { query in
-                                    Button {
-                                        searchVM.query = query
-                                        searchVM.performSearch()
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: "magnifyingglass")
-                                                .font(.system(size: 15))
-                                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                            
-                                            Text(query)
-                                                .font(.system(size: 16))
-                                                .foregroundStyle(AppleMusicTheme.label)
-                                            
-                                            Spacer()
-                                            
-                                            Image(systemName: "arrow.up.left")
-                                                .font(.system(size: 13))
-                                                .foregroundStyle(AppleMusicTheme.tertiaryLabel)
+                                    HStack {
+                                        Button {
+                                            searchVM.query = query
+                                            searchVM.performSearch()
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Image(systemName: "magnifyingglass")
+                                                    .font(.system(size: 15))
+                                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                                
+                                                Text(query)
+                                                    .font(.system(size: 16))
+                                                    .foregroundStyle(AppleMusicTheme.label)
+                                                
+                                                Spacer()
+                                            }
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            LibraryRepository.shared.removeSearchQuery(query)
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundStyle(AppleMusicTheme.tertiaryLabel)
+                                                .padding(6)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 4)
                                 }
                             }
                         }
@@ -175,7 +191,24 @@ public struct SearchV: View {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Artists, Songs, Lyrics, and More"
             )
+            .searchSuggestions {
+                ForEach(searchVM.suggestions, id: \.self) { suggestion in
+                    Button {
+                        searchVM.query = suggestion
+                        searchVM.performSearch()
+                    } label: {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            Text(suggestion)
+                                .foregroundStyle(AppleMusicTheme.label)
+                            Spacer()
+                        }
+                    }
+                }
+            }
             .onChange(of: searchVM.query) { _, _ in
+                searchVM.fetchSuggestions()
                 searchVM.performSearch()
             }
         }

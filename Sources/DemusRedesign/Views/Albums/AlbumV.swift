@@ -6,8 +6,12 @@ public struct AlbumV: View {
     public let album: Album
     @Bindable public var player: PlayerEngine = .shared
     
+    @State private var currentAlbum: Album
+    @State private var isLoading: Bool = false
+    
     public init(album: Album) {
         self.album = album
+        self._currentAlbum = State(initialValue: album)
     }
     
     public var body: some View {
@@ -15,7 +19,7 @@ public struct AlbumV: View {
             VStack(spacing: 24) {
                 // Large Centered Artwork
                 ZStack {
-                    if let url = album.artworkURL {
+                    if let url = currentAlbum.artworkURL {
                         AsyncImage(url: url) { phase in
                             switch phase {
                             case .success(let image):
@@ -43,17 +47,17 @@ public struct AlbumV: View {
                 
                 // Album Title & Metadata
                 VStack(spacing: 4) {
-                    Text(album.title)
+                    Text(currentAlbum.title)
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(AppleMusicTheme.label)
                         .multilineTextAlignment(.center)
                     
-                    Text(album.artist)
+                    Text(currentAlbum.artist)
                         .font(.system(size: 19, weight: .medium))
                         .foregroundStyle(AppleMusicTheme.accent)
                     
-                    if let release = album.releaseDate {
-                        Text("Pop · \(release)")
+                    if let release = currentAlbum.releaseDate, !release.isEmpty {
+                        Text(release)
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
@@ -61,108 +65,151 @@ public struct AlbumV: View {
                 .padding(.horizontal, 20)
                 
                 // Action Buttons (Play & Shuffle)
-                HStack(spacing: 16) {
-                    Button {
-                        if let first = album.songs.first {
-                            player.play(song: first)
+                if !currentAlbum.songs.isEmpty {
+                    HStack(spacing: 16) {
+                        Button {
+                            player.playAll(songs: currentAlbum.songs, startingAt: 0, shuffle: false)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Play")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(AppleMusicTheme.secondarySystemBackground)
+                            .foregroundStyle(AppleMusicTheme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Play")
-                                .font(.system(size: 16, weight: .semibold))
+                        .buttonStyle(.appleMusicCard)
+                        
+                        Button {
+                            player.playAll(songs: currentAlbum.songs, startingAt: 0, shuffle: true)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "shuffle")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Shuffle")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(AppleMusicTheme.secondarySystemBackground)
+                            .foregroundStyle(AppleMusicTheme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(AppleMusicTheme.secondarySystemBackground)
-                        .foregroundStyle(AppleMusicTheme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .buttonStyle(.appleMusicCard)
                     }
-                    .buttonStyle(.appleMusicCard)
-                    
-                    Button {
-                        if let randomSong = album.songs.randomElement() {
-                            player.isShuffle = true
-                            player.play(song: randomSong)
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "shuffle")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Shuffle")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(AppleMusicTheme.secondarySystemBackground)
-                        .foregroundStyle(AppleMusicTheme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(.appleMusicCard)
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
+                
+                // Loading Spinner
+                if isLoading {
+                    ProgressView()
+                        .tint(AppleMusicTheme.accent)
+                        .padding(.vertical, 30)
+                }
                 
                 // Track List
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(album.songs.enumerated()), id: \.element.id) { index, song in
-                        HStack(spacing: 16) {
-                            Text("\(index + 1)")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                .frame(width: 24, alignment: .trailing)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(song.title)
-                                    .font(.system(size: 16, weight: .regular))
-                                    .foregroundStyle(player.currentSong?.id == song.id ? AppleMusicTheme.accent : AppleMusicTheme.label)
-                                    .lineLimit(1)
+                if !currentAlbum.songs.isEmpty {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(currentAlbum.songs.enumerated()), id: \.element.id) { index, song in
+                            HStack(spacing: 16) {
+                                Text("\(index + 1)")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                    .frame(width: 24, alignment: .trailing)
                                 
-                                Text(song.artistName)
-                                    .font(.system(size: 13, weight: .regular))
-                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                    .lineLimit(1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(song.title)
+                                        .font(.system(size: 16, weight: .regular))
+                                        .foregroundStyle(player.currentSong?.id == song.id ? AppleMusicTheme.accent : AppleMusicTheme.label)
+                                        .lineLimit(1)
+                                    
+                                    Text(song.artistName)
+                                        .font(.system(size: 13, weight: .regular))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                        .lineLimit(1)
+                                }
+                                
+                                Spacer()
+                                
+                                Menu {
+                                    Button {
+                                        player.playNext(song)
+                                    } label: {
+                                        Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                                    }
+                                    
+                                    Button {
+                                        player.addToQueue(song)
+                                    } label: {
+                                        Label("Play Later", systemImage: "text.line.last.and.arrowtriangle.forward")
+                                    }
+                                    
+                                    Button {
+                                        player.toggleFavorite(for: song.id)
+                                    } label: {
+                                        Label(song.isFavorite ? "Unfavorite" : "Favorite", systemImage: song.isFavorite ? "star.fill" : "star")
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                        .frame(width: 32, height: 32)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                player.playAll(songs: currentAlbum.songs, startingAt: index, shuffle: false)
                             }
                             
-                            Spacer()
-                            
-                            Button {
-                                // Options
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                    .frame(width: 32, height: 32)
-                            }
-                            .buttonStyle(.plain)
+                            Divider()
+                                .padding(.leading, 60)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            player.play(song: song)
-                        }
-                        
-                        Divider()
-                            .padding(.leading, 60)
                     }
+                    
+                    // Album Footer Details
+                    VStack(spacing: 6) {
+                        let totalSecs = currentAlbum.songs.reduce(0) { $0 + $1.duration }
+                        let minutes = Int(totalSecs / 60)
+                        Text("\(currentAlbum.songs.count) Songs\(minutes > 0 ? ", \(minutes) Minutes" : "")")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        
+                        if let release = currentAlbum.releaseDate, !release.isEmpty {
+                            Text("Released \(release)")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(AppleMusicTheme.tertiaryLabel)
+                        }
+                    }
+                    .padding(.top, 16)
+                } else if !isLoading {
+                    ContentUnavailableView {
+                        Label("No Tracks Found", systemImage: "music.note")
+                    } description: {
+                        Text("This album does not have available tracks.")
+                    }
+                    .padding(.top, 20)
                 }
                 
-                // Album Footer Copyright & Details
-                VStack(spacing: 6) {
-                    Text("\(album.songs.count) Songs, 18 Minutes")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                    
-                    Text("℗ 2026 Republic Records, a division of UMG Recordings, Inc.")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundStyle(AppleMusicTheme.tertiaryLabel)
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 100) // Padding for CompactPlayer
+                Spacer(minLength: 100) // Padding for CompactPlayer
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if currentAlbum.songs.isEmpty {
+                isLoading = true
+                if let fetched = await BrowseService.shared.fetchAlbum(id: album.id) {
+                    currentAlbum = fetched
+                }
+                isLoading = false
+            }
+        }
     }
     
     private var placeholderImage: some View {

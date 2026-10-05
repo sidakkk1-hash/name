@@ -8,6 +8,8 @@ public struct SongsV: View {
     @State private var sortOption: SortOption = .title
     @State private var librarySongs: [Song] = LibraryRepository.shared.librarySongs
     
+    @State private var showFavoritesOnly: Bool = false
+    
     enum SortOption: String, CaseIterable, Identifiable {
         case title = "Title"
         case artist = "Artist"
@@ -19,12 +21,15 @@ public struct SongsV: View {
     public init() {}
     
     private var displaySongs: [Song] {
-        let base = !librarySongs.isEmpty ? librarySongs : player.queue
+        var base = librarySongs
+        if showFavoritesOnly {
+            base = base.filter { $0.isFavorite }
+        }
         switch sortOption {
         case .title:
-            return base.sorted { $0.title < $1.title }
+            return base.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .artist:
-            return base.sorted { $0.artistName < $1.artistName }
+            return base.sorted { $0.artistName.localizedCaseInsensitiveCompare($1.artistName) == .orderedAscending }
         case .recentlyAdded:
             return base
         }
@@ -35,9 +40,9 @@ public struct SongsV: View {
             ScrollView {
                 if displaySongs.isEmpty {
                     ContentUnavailableView {
-                        Label("No Songs in Library", systemImage: "music.note")
+                        Label(showFavoritesOnly ? "No Favorite Songs" : "No Songs in Library", systemImage: showFavoritesOnly ? "star" : "music.note")
                     } description: {
-                        Text("Search for songs and play or favorite them to add to your library.")
+                        Text(showFavoritesOnly ? "Favorite tracks by tapping the star icon." : "Search for songs and play or add them to your library.")
                     }
                     .padding(.top, 80)
                 } else {
@@ -45,9 +50,7 @@ public struct SongsV: View {
                         // Play & Shuffle Header Action Buttons
                         HStack(spacing: 16) {
                             Button {
-                                if let first = displaySongs.first {
-                                    player.play(song: first)
-                                }
+                                player.playAll(songs: displaySongs, startingAt: 0, shuffle: false)
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: "play.fill")
@@ -64,10 +67,7 @@ public struct SongsV: View {
                             .buttonStyle(.appleMusicCard)
                             
                             Button {
-                                if let random = displaySongs.randomElement() {
-                                    player.isShuffle = true
-                                    player.play(song: random)
-                                }
+                                player.playAll(songs: displaySongs, startingAt: 0, shuffle: true)
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: "shuffle")
@@ -94,6 +94,17 @@ public struct SongsV: View {
                             
                             Spacer()
                             
+                            Button {
+                                withAnimation {
+                                    showFavoritesOnly.toggle()
+                                }
+                            } label: {
+                                Image(systemName: showFavoritesOnly ? "star.fill" : "star")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(showFavoritesOnly ? AppleMusicTheme.accent : AppleMusicTheme.secondaryLabel)
+                                    .padding(.trailing, 8)
+                            }
+                            
                             Menu {
                                 Picker("Sort By", selection: $sortOption) {
                                     ForEach(SortOption.allCases) { option in
@@ -114,12 +125,12 @@ public struct SongsV: View {
                         
                         // Track Rows List
                         LazyVStack(spacing: 6) {
-                            ForEach(displaySongs) { song in
+                            ForEach(Array(displaySongs.enumerated()), id: \.element.id) { index, song in
                                 SongRow(
                                     song: song,
                                     isCurrentPlaying: player.currentSong?.id == song.id
                                 ) {
-                                    player.play(song: song)
+                                    player.playAll(songs: displaySongs, startingAt: index, shuffle: false)
                                 }
                                 .padding(.horizontal, 16)
                                 
