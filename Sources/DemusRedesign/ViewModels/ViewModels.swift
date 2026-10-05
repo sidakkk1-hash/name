@@ -49,6 +49,8 @@ public final class MainTVM: @unchecked Sendable {
 // MARK: - SearchVM (Matches Demus Demus8SearchVM)
 @Observable
 public final class SearchVM: @unchecked Sendable {
+    public static let shared = SearchVM()
+    
     public var query: String = ""
     public var searchResults: [Song] = []
     public var matchedAlbums: [Album] = []

@@ -4,7 +4,7 @@ import SwiftUI
 /// Reconstructed Search view with native search bar, 2-column vibrant Browse Categories,
 /// recent searches, and categorized search results (Songs, Albums, Artists).
 public struct SearchV: View {
-    @Bindable public var searchVM: SearchVM = SearchVM()
+    @Bindable public var searchVM: SearchVM = SearchVM.shared
     @Bindable public var player: PlayerEngine = .shared
     
     private let columns = [

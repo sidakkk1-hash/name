@@ -1,9 +1,12 @@
 import SwiftUI
 
 // MARK: - SettingsV (Apple Music Settings Screen)
-/// Reconstructed Settings view with iOS 18 native grouped list styling, playback options, and theme controls.
+/// Reconstructed Settings view with Google/YouTube account connection,
+/// iOS 18 native grouped list styling, playback options, and theme controls.
 public struct SettingsV: View {
     @Bindable public var mainTVM: MainTVM = .shared
+    @Bindable private var accountManager: GoogleAccountManager = .shared
+    @State private var isLoginSheetPresented: Bool = false
     @State private var audioQuality: String = "Lossless (24-bit/48kHz)"
     @State private var dolbyAtmos: Bool = true
     @State private var soundCheck: Bool = true
@@ -13,11 +16,67 @@ public struct SettingsV: View {
     public var body: some View {
         NavigationStack {
             List {
+                // YouTube Music Account Sync Section
+                Section("YouTube Music Account") {
+                    if accountManager.isLoggedIn {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 34))
+                                .foregroundStyle(AppleMusicTheme.accent)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(accountManager.userEmail ?? "Connected Account")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(AppleMusicTheme.label)
+                                
+                                Text("Synced with YouTube Music")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        
+                        Button(role: .destructive) {
+                            accountManager.signOut()
+                        } label: {
+                            Text("Sign Out")
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Sync Your Music")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(AppleMusicTheme.label)
+                            
+                            Text("Sign in with Google to sync your Liked Songs, personal playlists, and recommendations directly into Demus.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            
+                            Button {
+                                isLoginSheetPresented = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "person.badge.key.fill")
+                                    Text("Sign in with Google")
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(AppleMusicTheme.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 4)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+                
                 // Audio & Playback Section
                 Section("Audio & Playback") {
                     Toggle("Show Song Durations", isOn: $mainTVM.options.showSongDurations)
                     Toggle("Show Rewind Button", isOn: $mainTVM.options.showRewindButton)
-                    Toggle("Autoplay Similar Music", isOn: $mainTVM.options.autoplay)
+                    Toggle("Autoplay Similar Music (Radio)", isOn: $mainTVM.options.autoplay)
                     Toggle("Dolby Atmos", isOn: $dolbyAtmos)
                     Toggle("Sound Check", isOn: $soundCheck)
                     
@@ -53,7 +112,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("App")
                         Spacer()
-                        Text("Demus (Apple Music Redesign)")
+                        Text("Demus (Apple Music Edition)")
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
                     HStack {
@@ -72,6 +131,9 @@ public struct SettingsV: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
+            .sheet(isPresented: $isLoginSheetPresented) {
+                GoogleLoginSheet()
+            }
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 70) // Padding for CompactPlayer
             }

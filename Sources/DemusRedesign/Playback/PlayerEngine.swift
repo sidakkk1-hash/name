@@ -157,6 +157,19 @@ public final class PlayerEngine: @unchecked Sendable {
         Task { @MainActor in
             WKAudioEngine.shared.loadAndPlay(videoId: upgradedSong.id)
         }
+        
+        // Auto-fetch algorithmic Up Next songs like YouTube Music
+        Task { [weak self] in
+            let radioSongs = await RadioService.shared.fetchUpNext(videoId: upgradedSong.id)
+            guard let self = self, !radioSongs.isEmpty else { return }
+            await MainActor.run {
+                for nextSong in radioSongs {
+                    if !self.queue.contains(where: { $0.id == nextSong.id }) {
+                        self.queue.append(nextSong)
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Playback Controls

@@ -18,7 +18,7 @@ public protocol WKAudioEngineDelegate: AnyObject, Sendable {
 
 // MARK: - WKAudioEngine
 /// WebKit-powered background YouTube audio engine matching Demus's EmbedPlayer / WebPlayer architecture.
-/// Bypasses googlevideo 403 Forbidden bot-detection by leveraging the official YouTube player runtime.
+/// Bypasses googlevideo 403 Forbidden bot-detection and ensures continuous background playback.
 @MainActor
 public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked Sendable {
     public static let shared = WKAudioEngine()
@@ -28,22 +28,75 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     private var webView: WKWebView?
     private var isPlayerReady: Bool = false
     private var currentVideoId: String?
+    private var silentAudioPlayer: AVAudioPlayer?
     
     override public init() {
         super.init()
         setupAudioSession()
+        setupSilentAudioKeeper()
         setupWebView()
+        setupBackgroundObservers()
     }
     
     // MARK: - Audio Session Setup
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
             try session.setActive(true)
         } catch {
             print("[WKAudioEngine] AVAudioSession setup error:", error)
         }
+    }
+    
+    // MARK: - Silent Audio Keeper (Demus Technique)
+    /// Runs a 0-volume native audio loop so iOS background power manager never suspends WebKit.
+    private func setupSilentAudioKeeper() {
+        // Standard 44-byte WAV header + silent PCM buffer
+        var header = [UInt8](repeating: 0, count: 44)
+        header[0] = 0x52; header[1] = 0x49; header[2] = 0x46; header[3] = 0x46 // RIFF
+        let chunkSize: UInt32 = 4036
+        header[4] = UInt8(chunkSize & 0xff); header[5] = UInt8((chunkSize >> 8) & 0xff)
+        header[6] = UInt8((chunkSize >> 16) & 0xff); header[7] = UInt8((chunkSize >> 24) & 0xff)
+        header[8] = 0x57; header[9] = 0x41; header[10] = 0x56; header[11] = 0x45 // WAVE
+        header[12] = 0x66; header[13] = 0x6d; header[14] = 0x74; header[15] = 0x20 // fmt
+        header[16] = 16; header[20] = 1; header[22] = 1 // PCM, 1 channel
+        let sampleRate: UInt32 = 8000
+        header[24] = UInt8(sampleRate & 0xff); header[25] = UInt8((sampleRate >> 8) & 0xff)
+        let byteRate: UInt32 = 16000
+        header[28] = UInt8(byteRate & 0xff); header[29] = UInt8((byteRate >> 8) & 0xff)
+        header[32] = 2; header[34] = 16 // 16-bit
+        header[36] = 0x64; header[37] = 0x61; header[38] = 0x74; header[39] = 0x61 // data
+        let dataSize: UInt32 = 4000
+        header[40] = UInt8(dataSize & 0xff); header[41] = UInt8((dataSize >> 8) & 0xff)
+        
+        var fullData = Data(header)
+        fullData.append(Data(repeating: 0, count: Int(dataSize)))
+        
+        do {
+            let player = try AVAudioPlayer(data: fullData)
+            player.numberOfLoops = -1
+            player.volume = 0.0001
+            player.prepareToPlay()
+            player.play()
+            self.silentAudioPlayer = player
+        } catch {
+            print("[WKAudioEngine] SilentAudioKeeper setup error:", error)
+        }
+    }
+    
+    // MARK: - Background Notification Observers
+    private func setupBackgroundObservers() {
+        #if canImport(UIKit)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Re-trigger playVideo if needed when app moves to background
+            self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
+        }
+        #endif
     }
     
     // MARK: - WebKit Initialization
@@ -80,6 +133,15 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
         <body>
         <div id="player"></div>
         <script>
+        // Override document visibility so YouTube iframe never pauses in background
+        try {
+            Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+            document.addEventListener('visibilitychange', function(e) {
+                e.stopImmediatePropagation();
+            }, true);
+        } catch(e) {}
+
         var tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         var firstScriptTag = document.getElementsByTagName('script')[0];
@@ -121,7 +183,6 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
         }
 
         function onPlayerStateChange(event) {
-            // YT.PlayerState: -1 (UNSTARTED), 0 (ENDED), 1 (PLAYING), 2 (PAUSED), 3 (BUFFERING), 5 (CUED)
             var cur = (player && player.getCurrentTime) ? player.getCurrentTime() : 0;
             var dur = (player && player.getDuration) ? player.getDuration() : 0;
             window.webkit.messageHandlers.audioBridge.postMessage({
