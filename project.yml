@@ -1,0 +1,25 @@
+name: DemusRedesign
+options:
+  bundleIdPrefix: com.demusapp
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+
+settings:
+  SWIFT_VERSION: "6.0"
+  TARGETED_DEVICE_FAMILY: "1,2"
+
+targets:
+  DemusRedesign:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - Sources/DemusRedesign
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.demusapp.redesign
+      GENERATE_INFOPLIST_FILE: YES
+      CURRENT_PROJECT_VERSION: 1
+      MARKETING_VERSION: "2.0.22"
+      INFOPLIST_KEY_UILaunchScreen_Generation: YES
+      INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
