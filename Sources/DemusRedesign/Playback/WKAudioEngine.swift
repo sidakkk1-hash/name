@@ -8,8 +8,7 @@ import UIKit
 @preconcurrency import AVFoundation
 
 // MARK: - WKAudioEngineDelegate
-@MainActor
-public protocol WKAudioEngineDelegate: AnyObject {
+public protocol WKAudioEngineDelegate: AnyObject, Sendable {
     func audioEngineDidReady()
     func audioEngineDidChangeState(isPlaying: Bool, isLoading: Bool)
     func audioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval)

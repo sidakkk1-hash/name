@@ -8,7 +8,6 @@ import SwiftUI
 /// providing 100% reliable background streaming, lock-screen controls, dynamic scrubbing,
 /// and queue orchestration without googlevideo 403 Forbidden interruptions.
 @Observable
-@MainActor
 public final class PlayerEngine: @unchecked Sendable {
     public static let shared = PlayerEngine()
     
@@ -30,7 +29,9 @@ public final class PlayerEngine: @unchecked Sendable {
     public init() {
         configureAudioSession()
         setupAudioObservers()
-        WKAudioEngine.shared.delegate = self
+        Task { @MainActor in
+            WKAudioEngine.shared.delegate = self
+        }
         NowPlayingManager.shared.setupRemoteCommands(player: self)
     }
     
@@ -65,14 +66,18 @@ public final class PlayerEngine: @unchecked Sendable {
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             
             if type == .began {
-                WKAudioEngine.shared.pause()
+                Task { @MainActor in
+                    WKAudioEngine.shared.pause()
+                }
                 self.isPlaying = false
                 self.updateLockScreen()
             } else if type == .ended {
                 if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
-                        WKAudioEngine.shared.play()
+                        Task { @MainActor in
+                            WKAudioEngine.shared.play()
+                        }
                         self.isPlaying = true
                         self.updateLockScreen()
                     }
@@ -92,7 +97,9 @@ public final class PlayerEngine: @unchecked Sendable {
             
             // If headphones unplugged or Bluetooth disconnected, pause playback
             if reason == .oldDeviceUnavailable {
-                WKAudioEngine.shared.pause()
+                Task { @MainActor in
+                    WKAudioEngine.shared.pause()
+                }
                 self.isPlaying = false
                 self.updateLockScreen()
             }
@@ -120,7 +127,9 @@ public final class PlayerEngine: @unchecked Sendable {
         
         if currentSong?.id == upgradedSong.id {
             if !isPlaying {
-                WKAudioEngine.shared.play()
+                Task { @MainActor in
+                    WKAudioEngine.shared.play()
+                }
                 isPlaying = true
                 updateLockScreen()
             }
@@ -145,17 +154,23 @@ public final class PlayerEngine: @unchecked Sendable {
         updateLockScreen()
         
         // Trigger Demus WebKit Audio Engine (Zero 403 Forbidden)
-        WKAudioEngine.shared.loadAndPlay(videoId: upgradedSong.id)
+        Task { @MainActor in
+            WKAudioEngine.shared.loadAndPlay(videoId: upgradedSong.id)
+        }
     }
     
     // MARK: - Playback Controls
     public func togglePlay() {
         if isPlaying {
-            WKAudioEngine.shared.pause()
+            Task { @MainActor in
+                WKAudioEngine.shared.pause()
+            }
             isPlaying = false
         } else {
             if currentSong != nil {
-                WKAudioEngine.shared.play()
+                Task { @MainActor in
+                    WKAudioEngine.shared.play()
+                }
                 isPlaying = true
             } else if let first = queue.first {
                 play(song: first)
@@ -186,7 +201,9 @@ public final class PlayerEngine: @unchecked Sendable {
             play(song: queue[0])
         } else {
             isPlaying = false
-            WKAudioEngine.shared.pause()
+            Task { @MainActor in
+                WKAudioEngine.shared.pause()
+            }
             updateLockScreen()
         }
     }
@@ -207,7 +224,9 @@ public final class PlayerEngine: @unchecked Sendable {
     public func seek(to time: TimeInterval) {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
-        WKAudioEngine.shared.seek(to: clamped)
+        Task { @MainActor in
+            WKAudioEngine.shared.seek(to: clamped)
+        }
         updateLockScreen()
     }
     
@@ -291,7 +310,9 @@ public final class PlayerEngine: @unchecked Sendable {
     private func handleSongDidEnd() {
         if isRepeat {
             seek(to: 0)
-            WKAudioEngine.shared.play()
+            Task { @MainActor in
+                WKAudioEngine.shared.play()
+            }
         } else {
             next()
         }
