@@ -501,7 +501,7 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, WKNavigation
             PlayerEngine.shared.next()
             
         case "ms_prev":
-            PlayerEngine.shared.previous()
+            PlayerEngine.shared.prev()
             
         case "ms_seek":
             if let sec = dict["time"] as? Double {

@@ -571,6 +571,10 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
+    public func previous() {
+        prev()
+    }
+    
     public func seek(to time: TimeInterval) {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
