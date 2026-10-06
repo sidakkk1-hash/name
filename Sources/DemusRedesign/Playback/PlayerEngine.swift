@@ -22,9 +22,23 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
-    public private(set) var isUsingNativeEngine: Bool = true
+    public private(set) var isUsingNativeEngine: Bool = false
     public private(set) var nativePlaybackConfirmed: Bool = false
     public private(set) var lastFailureReason: String?
+    
+    public func playFromWebMediaSession() {
+        guard !isPlaying else { return }
+        self.isPlaying = true
+        self.userIntentPlaying = true
+        updateLockScreen()
+    }
+    
+    public func pauseFromWebMediaSession() {
+        guard isPlaying else { return }
+        self.isPlaying = false
+        self.userIntentPlaying = false
+        updateLockScreen()
+    }
     
     public var forceNativeOnly: Bool {
         get {
@@ -64,7 +78,7 @@ public final class PlayerEngine: @unchecked Sendable {
     public private(set) var lastRouteChangeEvent: String = "None"
     
     public var activeEngineName: String {
-        isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine fallback"
+        isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine"
     }
     public var diagnosticSummary: String {
         if isUsingNativeEngine && nativePlaybackConfirmed {
@@ -72,7 +86,7 @@ public final class PlayerEngine: @unchecked Sendable {
         } else if let reason = lastFailureReason {
             return reason
         } else {
-            return "WKAudioEngine fallback"
+            return "WKAudioEngine"
         }
     }
     public var audioSessionCategoryString: String {
@@ -393,30 +407,19 @@ public final class PlayerEngine: @unchecked Sendable {
           AVAudioSession isOtherAudioPlaying: \(diagOther)
         """)
         
-        // Attempt Native Audio Engine (AVPlayer) first for rock-solid background audio
+        // Play exclusively via WKAudioEngine matching Demus embed architecture
         Task { @MainActor in
-            print("[PlayerEngine] Attempting playback via NativeAudioEngine for: \(songToPlay.title) (\(currentVideoId))")
-            self.isUsingNativeEngine = true
-            let nativeStarted = await NativeAudioEngine.shared.loadAndPlay(song: songToPlay)
-            if !nativeStarted {
-                if self.forceNativeOnly {
-                    print("[PlayerEngine] NativeAudioEngine load failed, but Force Native-Only is ON. Refusing WK fallback.")
-                    self.isUsingNativeEngine = true
-                    self.isPlaying = false
-                    self.isLoading = false
-                    self.errorMessage = NativeAudioEngine.shared.lastFailureReason
-                } else {
-                    print("""
-                    ==================================================
-                    Playback Engine: WKAudioEngine fallback
-                    ==================================================
-                    """)
-                    print("[PlayerEngine] NativeAudioEngine load failed; falling back to WKAudioEngine for \(currentVideoId)")
-                    self.isUsingNativeEngine = false
-                    NativeAudioEngine.shared.cleanupPlayer()
-                    WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
-                }
-            }
+            print("[PlayerEngine] Playing via WKAudioEngine for: \(songToPlay.title) (\(currentVideoId))")
+            self.isUsingNativeEngine = false
+            NativeAudioEngine.shared.cleanupPlayer()
+            WKAudioEngine.shared.loadAndPlay(
+                videoId: currentVideoId,
+                title: songToPlay.title,
+                artist: songToPlay.artistName,
+                album: songToPlay.albumName ?? "",
+                artworkUrl: songToPlay.artworkURL?.absoluteString ?? "",
+                duration: upgradedSong.duration
+            )
         }
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music

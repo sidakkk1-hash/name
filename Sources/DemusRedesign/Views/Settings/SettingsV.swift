@@ -98,66 +98,86 @@ public struct SettingsV: View {
                 }
                 
                 // Diagnostics Section
-                // Diagnostics Section
-                Section("Playback Diagnostics & Controls") {
+                Section("Playback Diagnostics (WKAudioEngine)") {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.27 (Native SIDX-HLS Server)")
+                        Text("v2.0.28 (Clean WebKit Engine)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
-                    
-                    Toggle("Force Native-Only Engine", isOn: Binding(
-                        get: { PlayerEngine.shared.forceNativeOnly },
-                        set: { PlayerEngine.shared.forceNativeOnly = $0 }
-                    ))
-                    .tint(.green)
-                    
                     HStack {
-                        Text("Active Engine")
+                        Text("Engine")
                         Spacer()
-                        Text(PlayerEngine.shared.activeEngineName)
-                            .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .secondary)
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    HStack {
-                        Text("Native Confirmed (>=3s)")
-                        Spacer()
-                        Text(PlayerEngine.shared.nativePlaybackConfirmed ? "Yes" : "No")
-                            .foregroundStyle(PlayerEngine.shared.nativePlaybackConfirmed ? .green : .secondary)
+                        Text("WKAudioEngine")
+                            .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
                     HStack {
-                        Text("AVPlayer Item Status")
+                        Text("WebView Alive")
                         Spacer()
-                        Text(NativeAudioEngine.shared.itemStatusString)
+                        Text(WKAudioEngine.shared.diagnostics.isWebViewAlive ? "Yes" : "No")
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.isWebViewAlive ? .green : .red)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    HStack {
+                        Text("Player Ready")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.isPlayerReady ? "Yes" : "No")
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.isPlayerReady ? .green : .secondary)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    HStack {
+                        Text("YouTube State")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.youtubeState)
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 13))
                     }
                     HStack {
-                        Text("Time Control Status")
+                        Text("HTML Audio Anchor")
                         Spacer()
-                        Text(NativeAudioEngine.shared.timeControlStatusString)
+                        Text(WKAudioEngine.shared.diagnostics.audioAnchorStatus)
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.audioAnchorStatus == "Playing" ? .green : AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    HStack {
+                        Text("Web audioSession API")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.webAudioSessionAvailable ? "Available" : "Unavailable")
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.webAudioSessionAvailable ? .green : .secondary)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Web audioSession Type")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.webAudioSessionType)
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 13))
                     }
                     HStack {
-                        Text("Current Time")
+                        Text("Document Hidden")
                         Spacer()
-                        Text(String(format: "%.1fs", PlayerEngine.shared.currentTime))
+                        Text(WKAudioEngine.shared.diagnostics.documentHidden ? "true" : "false")
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.documentHidden ? .red : .green)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Document Visibility State")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.documentVisibilityState)
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 13))
                     }
                     HStack {
-                        Text("Player Rate")
+                        Text("MediaSession Available")
                         Spacer()
-                        Text(String(format: "%.1f", NativeAudioEngine.shared.player.rate))
-                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        Text(WKAudioEngine.shared.diagnostics.mediaSessionAvailable ? "Available" : "Unavailable")
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.mediaSessionAvailable ? .green : .secondary)
                             .font(.system(size: 13))
                     }
                     HStack {
-                        Text("Audio Session Category")
+                        Text("AVAudioSession Category")
                         Spacer()
                         Text(PlayerEngine.shared.audioSessionCategoryString)
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
@@ -170,238 +190,28 @@ public struct SettingsV: View {
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 13))
                     }
-                }
-                
-                // Stream Validation Diagnostics
-                if let streamDiag = StreamResolutionService.shared.latestDiagnostic {
-                    Section("Stream Resource Validation") {
-                        HStack {
-                            Text("URL Host")
-                            Spacer()
-                            Text(streamDiag.urlHost)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("HTTP Validation Status")
-                            Spacer()
-                            Text("\(streamDiag.httpStatus)")
-                                .foregroundStyle(streamDiag.httpStatus == 200 || streamDiag.httpStatus == 206 ? .green : .red)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        HStack {
-                            Text("Content-Type")
-                            Spacer()
-                            Text(streamDiag.contentType)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Accept-Ranges")
-                            Spacer()
-                            Text(streamDiag.acceptRanges)
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Content-Range")
-                            Spacer()
-                            Text(streamDiag.contentRange)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Codec & Bitrate")
-                            Spacer()
-                            Text("\(streamDiag.codec) (\(streamDiag.bitrate / 1000) kbps)")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                    }
-                }
-                
-                // HLS Playlist & SIDX Diagnostics
-                if let hlsDiag = StreamResolutionService.shared.latestHLSDiagnostic {
-                    Section("HLS Playlist & SIDX Diagnostics") {
-                        HStack {
-                            Text("SIDX Valid")
-                            Spacer()
-                            Text(hlsDiag.sidxValid ? "Yes" : "No")
-                                .foregroundStyle(hlsDiag.sidxValid ? .green : .red)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        HStack {
-                            Text("Segment Count")
-                            Spacer()
-                            Text("\(hlsDiag.segmentCount)")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Init Range")
-                            Spacer()
-                            Text(hlsDiag.initRange)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Index Range")
-                            Spacer()
-                            Text(hlsDiag.indexRange)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Target Duration")
-                            Spacer()
-                            Text("\(hlsDiag.targetDuration)s")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Playlist Generated")
-                            Spacer()
-                            Text(hlsDiag.playlistGenerated ? "Yes" : "No")
-                                .foregroundStyle(hlsDiag.playlistGenerated ? .green : .red)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        HStack {
-                            Text("First Media Range")
-                            Spacer()
-                            Text(hlsDiag.firstMediaRange)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Last Media Range")
-                            Spacer()
-                            Text(hlsDiag.lastMediaRange)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Total Duration")
-                            Spacer()
-                            Text(String(format: "%.1fs", hlsDiag.totalDuration))
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        if let sUrl = hlsDiag.serverURL {
-                            HStack {
-                                Text("Local HLS Server")
-                                Spacer()
-                                Text(sUrl)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                        if let reason = hlsDiag.failureReason {
-                            HStack(alignment: .top) {
-                                Text("Failure Reason")
-                                Spacer()
-                                Text(reason)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                    }
-                }
-                
-                // AVFoundation Asset & Error Diagnostics
-                Section("AVFoundation Diagnostics") {
-                    if let assetDiag = NativeAudioEngine.shared.latestAssetDiagnostic {
-                        HStack {
-                            Text("Asset isPlayable")
-                            Spacer()
-                            Text(assetDiag.isPlayable ? "True" : "False")
-                                .foregroundStyle(assetDiag.isPlayable ? .green : .red)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        HStack {
-                            Text("Asset Duration")
-                            Spacer()
-                            Text(String(format: "%.1fs", assetDiag.durationSeconds))
-                                .font(.system(size: 13))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        HStack {
-                            Text("Tracks")
-                            Spacer()
-                            Text("\(assetDiag.tracksCount) (\(assetDiag.trackMediaTypes.joined(separator: ", ")))")
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        }
-                        if let lErr = assetDiag.loadError {
-                            HStack(alignment: .top) {
-                                Text("Asset Load Error")
-                                Spacer()
-                                Text(lErr)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                    }
-                    
-                    HStack(alignment: .top) {
-                        Text("Last Error")
+                    HStack {
+                        Text("Current Time")
                         Spacer()
-                        Text(PlayerEngine.shared.lastFailureReason ?? "None")
-                            .foregroundStyle(PlayerEngine.shared.lastFailureReason != nil ? .orange : AppleMusicTheme.secondaryLabel)
+                        Text(String(format: "%.1fs / %.1fs", PlayerEngine.shared.currentTime, PlayerEngine.shared.duration))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack(alignment: .top) {
+                        Text("Last YouTube Error")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.lastYouTubeError)
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.lastYouTubeError != "None" ? .orange : AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 12))
                             .multilineTextAlignment(.trailing)
                     }
-                    
-                    if let errDiag = NativeAudioEngine.shared.latestErrorDiagnostic {
-                        if errDiag.errorLogEvents != "none" {
-                            HStack(alignment: .top) {
-                                Text("errorLog")
-                                Spacer()
-                                Text(errDiag.errorLogEvents)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.orange)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                        if errDiag.accessLogEvents != "none" {
-                            HStack(alignment: .top) {
-                                Text("accessLog")
-                                Spacer()
-                                Text(errDiag.accessLogEvents)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                    }
-                }
-                
-                // Background Snapshots Section
-                if !PlayerEngine.shared.diagnosticSnapshots.isEmpty {
-                    Section("Background Lifecycle Snapshots") {
-                        ForEach(PlayerEngine.shared.diagnosticSnapshots) { snap in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(snap.label)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(AppleMusicTheme.accent)
-                                    Spacer()
-                                    Text(String(format: "Time: %.1fs | Rate: %.1f", snap.currentTime, snap.rate))
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                }
-                                Text("Status: \(snap.itemStatus) | TC: \(snap.timeControlStatus) | Category: \(snap.audioSessionCategory)")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                                if snap.lastNativeError != "None" {
-                                    Text("Err: \(snap.lastNativeError)")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.orange)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
+                    HStack(alignment: .top) {
+                        Text("Last WebKit Error")
+                        Spacer()
+                        Text(WKAudioEngine.shared.diagnostics.lastWebKitError)
+                            .foregroundStyle(WKAudioEngine.shared.diagnostics.lastWebKitError != "None" ? .red : AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 12))
+                            .multilineTextAlignment(.trailing)
                     }
                 }
                 
@@ -455,7 +265,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("2.0.22")
+                        Text("2.0.28")
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
                     HStack {
