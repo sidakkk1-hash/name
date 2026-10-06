@@ -95,13 +95,72 @@ public struct SettingsV: View {
                             .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .secondary)
                             .font(.system(size: 14, weight: .semibold))
                     }
-                    
+                }
+                
+                // Diagnostics Section
+                Section("Playback Diagnostics") {
                     HStack {
-                        Text("Diagnostics")
+                        Text("Active Engine")
                         Spacer()
-                        Text(PlayerEngine.shared.diagnosticSummary)
-                            .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .orange)
+                        Text(PlayerEngine.shared.activeEngineName)
+                            .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .secondary)
                             .font(.system(size: 13, weight: .medium))
+                    }
+                    HStack {
+                        Text("Native Confirmed")
+                        Spacer()
+                        Text(PlayerEngine.shared.nativePlaybackConfirmed ? "Yes" : "No")
+                            .foregroundStyle(PlayerEngine.shared.nativePlaybackConfirmed ? .green : .secondary)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    HStack {
+                        Text("AVPlayer Item Status")
+                        Spacer()
+                        Text(NativeAudioEngine.shared.itemStatusString)
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Time Control Status")
+                        Spacer()
+                        Text(NativeAudioEngine.shared.timeControlStatusString)
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Current Time")
+                        Spacer()
+                        Text(String(format: "%.1fs", PlayerEngine.shared.currentTime))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Player Rate")
+                        Spacer()
+                        Text(String(format: "%.1f", NativeAudioEngine.shared.player.rate))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Last Native Error")
+                        Spacer()
+                        Text(PlayerEngine.shared.lastFailureReason ?? "None")
+                            .foregroundStyle(PlayerEngine.shared.lastFailureReason != nil ? .orange : AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("Audio Session Category")
+                        Spacer()
+                        Text(PlayerEngine.shared.audioSessionCategoryString)
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
+                    }
+                    HStack {
+                        Text("App State")
+                        Spacer()
+                        Text(PlayerEngine.shared.appStateString)
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 13))
                     }
                 }
                 

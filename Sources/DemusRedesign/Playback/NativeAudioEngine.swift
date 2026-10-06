@@ -265,7 +265,7 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     }
     
     public func seek(to seconds: TimeInterval) {
-        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 1000)
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
     
@@ -298,5 +298,25 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     
     public func cleanupPlayer() {
         cleanupCurrentItem()
+    }
+    
+    // MARK: - Diagnostics Helpers
+    public var itemStatusString: String {
+        guard let item = playerItem else { return "none" }
+        switch item.status {
+        case .readyToPlay: return "readyToPlay"
+        case .failed: return "failed"
+        case .unknown: return "unknown"
+        @unknown default: return "unknown"
+        }
+    }
+    
+    public var timeControlStatusString: String {
+        switch player.timeControlStatus {
+        case .playing: return "playing"
+        case .paused: return "paused"
+        case .waitingToPlayAtSpecifiedRate: return "waiting"
+        @unknown default: return "unknown"
+        }
     }
 }

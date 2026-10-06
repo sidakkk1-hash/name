@@ -37,6 +37,25 @@ public final class PlayerEngine: @unchecked Sendable {
             return "WKAudioEngine fallback"
         }
     }
+    public var audioSessionCategoryString: String {
+        #if canImport(AVFAudio)
+        return AVAudioSession.sharedInstance().category.rawValue
+        #else
+        return "unknown"
+        #endif
+    }
+    public var appStateString: String {
+        #if canImport(UIKit)
+        switch UIApplication.shared.applicationState {
+        case .active: return "active (foreground)"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
+        }
+        #else
+        return "unknown"
+        #endif
+    }
     public var volume: Double = 1.0 {
         didSet {
             let v = volume

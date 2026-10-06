@@ -75,6 +75,26 @@ public final class NowPlayingManager: @unchecked Sendable {
             player.seek(to: posEvent.positionTime)
             return .success
         }
+        
+        // 7. Skip Forward Command (15s)
+        commandCenter.skipForwardCommand.preferredIntervals = [15.0]
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.addTarget { _ in
+            let newTime = min(player.duration, player.currentTime + 15)
+            player.seek(to: newTime)
+            return .success
+        }
+        
+        // 8. Skip Backward Command (15s)
+        commandCenter.skipBackwardCommand.preferredIntervals = [15.0]
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.addTarget { _ in
+            let newTime = max(0, player.currentTime - 15)
+            player.seek(to: newTime)
+            return .success
+        }
         #endif
     }
     
