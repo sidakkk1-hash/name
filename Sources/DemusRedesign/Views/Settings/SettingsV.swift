@@ -103,7 +103,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.26 (Native SIDX-HLS)")
+                        Text("v2.0.27 (Native SIDX-HLS Server)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
@@ -286,6 +286,15 @@ public struct SettingsV: View {
                                 .font(.system(size: 13))
                                 .foregroundStyle(AppleMusicTheme.secondaryLabel)
                         }
+                        if let sUrl = hlsDiag.serverURL {
+                            HStack {
+                                Text("Local HLS Server")
+                                Spacer()
+                                Text(sUrl)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.green)
+                            }
+                        }
                         if let reason = hlsDiag.failureReason {
                             HStack(alignment: .top) {
                                 Text("Failure Reason")
@@ -322,6 +331,16 @@ public struct SettingsV: View {
                             Text("\(assetDiag.tracksCount) (\(assetDiag.trackMediaTypes.joined(separator: ", ")))")
                                 .font(.system(size: 12))
                                 .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        if let lErr = assetDiag.loadError {
+                            HStack(alignment: .top) {
+                                Text("Asset Load Error")
+                                Spacer()
+                                Text(lErr)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
                     }
                     

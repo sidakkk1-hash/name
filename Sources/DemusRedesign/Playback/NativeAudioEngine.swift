@@ -38,6 +38,21 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         public let durationSeconds: Double
         public let tracksCount: Int
         public let trackMediaTypes: [String]
+        public let loadError: String?
+        
+        public init(
+            isPlayable: Bool,
+            durationSeconds: Double,
+            tracksCount: Int,
+            trackMediaTypes: [String],
+            loadError: String? = nil
+        ) {
+            self.isPlayable = isPlayable
+            self.durationSeconds = durationSeconds
+            self.tracksCount = tracksCount
+            self.trackMediaTypes = trackMediaTypes
+            self.loadError = loadError
+        }
     }
     
     public struct ErrorDiagnosticInfo: Sendable {
@@ -104,6 +119,7 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         var trackCount = 0
         var trackTypes: [String] = []
         
+        var loadError: String?
         do {
             isPlayable = try await asset.load(.isPlayable)
             let dur = try await asset.load(.duration)
@@ -113,13 +129,16 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
             trackTypes = tracks.map { $0.mediaType.rawValue }
         } catch {
             print("[NativeAudioEngine] Public asset.load failed: \(error)")
+            loadError = error.localizedDescription
+            self.lastFailureReason = "Asset load failed: \(error.localizedDescription)"
         }
         
         self.latestAssetDiagnostic = AssetDiagnosticInfo(
             isPlayable: isPlayable,
             durationSeconds: assetDurationSeconds,
             tracksCount: trackCount,
-            trackMediaTypes: trackTypes
+            trackMediaTypes: trackTypes,
+            loadError: loadError
         )
         
         print("""
@@ -127,6 +146,7 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
           isPlayable: \(isPlayable)
           duration: \(assetDurationSeconds)s
           tracks: \(trackCount) (\(trackTypes.joined(separator: ", ")))
+          loadError: \(loadError ?? "none")
         """)
         
         let item = AVPlayerItem(asset: asset)

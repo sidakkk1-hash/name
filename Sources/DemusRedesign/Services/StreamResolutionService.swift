@@ -71,7 +71,34 @@ public final class StreamResolutionService: @unchecked Sendable {
         public let firstMediaRange: String
         public let lastMediaRange: String
         public let totalDuration: Double
+        public let serverURL: String?
         public let failureReason: String?
+        
+        public init(
+            sidxValid: Bool,
+            segmentCount: Int,
+            initRange: String,
+            indexRange: String,
+            targetDuration: Int,
+            playlistGenerated: Bool,
+            firstMediaRange: String,
+            lastMediaRange: String,
+            totalDuration: Double,
+            serverURL: String? = nil,
+            failureReason: String? = nil
+        ) {
+            self.sidxValid = sidxValid
+            self.segmentCount = segmentCount
+            self.initRange = initRange
+            self.indexRange = indexRange
+            self.targetDuration = targetDuration
+            self.playlistGenerated = playlistGenerated
+            self.firstMediaRange = firstMediaRange
+            self.lastMediaRange = lastMediaRange
+            self.totalDuration = totalDuration
+            self.serverURL = serverURL
+            self.failureReason = failureReason
+        }
     }
     
     public private(set) var latestDiagnostic: StreamDiagnosticInfo?
@@ -479,6 +506,11 @@ public final class StreamResolutionService: @unchecked Sendable {
                             let m3u8URL = tempDir.appendingPathComponent("demus_\(videoId).m3u8")
                             try m3u8Content.write(to: m3u8URL, atomically: true, encoding: .utf8)
                             
+                            // Serve via embedded loopback HTTP server to bypass Apple's file:// remote segment restriction
+                            let port = try await LocalHLSServer.shared.ensureStarted()
+                            LocalHLSServer.shared.setPlaylist(content: m3u8Content)
+                            let httpPlaylistURL = URL(string: "http://127.0.0.1:\(port)/playlist.m3u8")!
+                            
                             let totalDur = segments.reduce(0.0) { $0 + $1.duration }
                             let firstMediaRange = "\(segments[0].length)@\(segments[0].offset)"
                             let lastMediaRange = "\(lastSeg.length)@\(lastSeg.offset)"
@@ -493,11 +525,13 @@ public final class StreamResolutionService: @unchecked Sendable {
                                 firstMediaRange: firstMediaRange,
                                 lastMediaRange: lastMediaRange,
                                 totalDuration: totalDur,
+                                serverURL: "http://127.0.0.1:\(port)/playlist.m3u8",
                                 failureReason: nil
                             )
                             
                             print("""
-                            [StreamResolution] HLS Generated Successfully:
+                            [StreamResolution] HLS Generated & Served via LocalHLSServer:
+                              serverURL: http://127.0.0.1:\(port)/playlist.m3u8
                               timescale: \(timescale)
                               segments: \(segments.count)
                               targetDuration: \(targetDuration)
@@ -508,7 +542,7 @@ public final class StreamResolutionService: @unchecked Sendable {
                             """)
                             
                             return ResolvedStream(
-                                url: m3u8URL,
+                                url: httpPlaylistURL,
                                 isHLS: true,
                                 duration: totalDur > 0 ? totalDur : streamDuration,
                                 bitrate: bitrate,
