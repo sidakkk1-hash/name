@@ -24,6 +24,20 @@ public final class StreamResolutionService: @unchecked Sendable {
     
     private let client: HTTPClient
     
+    public struct StreamDiagnosticInfo: Sendable {
+        public let httpStatus: Int
+        public let contentType: String
+        public let acceptRanges: String
+        public let contentRange: String
+        public let contentLength: String
+        public let mimeType: String
+        public let codec: String
+        public let bitrate: Int
+        public let urlHost: String
+    }
+    
+    public private(set) var latestDiagnostic: StreamDiagnosticInfo?
+    
     public init(client: HTTPClient = .shared) {
         self.client = client
     }
@@ -106,7 +120,32 @@ public final class StreamResolutionService: @unchecked Sendable {
             throw StreamResolutionError.streamResolutionFailed
         }
         
-        // Check for Adaptive Formats
+        // 1. Check if Innertube genuinely returned hlsManifestUrl (HLS master playlist)
+        if let hlsStr = streamingData["hlsManifestUrl"] as? String, let hlsURL = URL(string: hlsStr) {
+            let host = hlsURL.host ?? "unknown"
+            print("[StreamResolutionService] Innertube genuinely returned hlsManifestUrl host: \(host)")
+            self.latestDiagnostic = StreamDiagnosticInfo(
+                httpStatus: 200,
+                contentType: "application/x-mpegURL",
+                acceptRanges: "bytes",
+                contentRange: "HLS Manifest",
+                contentLength: "manifest",
+                mimeType: "application/x-mpegURL",
+                codec: "AAC (HLS)",
+                bitrate: 0,
+                urlHost: host
+            )
+            return ResolvedStream(
+                url: hlsURL,
+                isHLS: true,
+                duration: songDuration,
+                bitrate: nil,
+                mimeType: "application/x-mpegURL",
+                headers: nil
+            )
+        }
+        
+        // 2. Check for Adaptive Formats
         let adaptiveFormats = (streamingData["adaptiveFormats"] as? [[String: Any]]) ?? []
         var audioFormats = adaptiveFormats.filter { ($0["mimeType"] as? String)?.contains("audio") == true }
         
@@ -170,6 +209,20 @@ public final class StreamResolutionService: @unchecked Sendable {
                 let statusCode = httpResp.statusCode
                 let contentType = httpResp.value(forHTTPHeaderField: "Content-Type") ?? "none"
                 let acceptRanges = httpResp.value(forHTTPHeaderField: "Accept-Ranges") ?? "none"
+                let contentRange = httpResp.value(forHTTPHeaderField: "Content-Range") ?? "none"
+                let contentLength = httpResp.value(forHTTPHeaderField: "Content-Length") ?? "none"
+                
+                self.latestDiagnostic = StreamDiagnosticInfo(
+                    httpStatus: statusCode,
+                    contentType: contentType,
+                    acceptRanges: acceptRanges,
+                    contentRange: contentRange,
+                    contentLength: contentLength,
+                    mimeType: mime,
+                    codec: audioCodec,
+                    bitrate: bitrate,
+                    urlHost: host
+                )
                 
                 print("""
                 [StreamResolution] Audio Format Diagnostic:
@@ -180,6 +233,7 @@ public final class StreamResolutionService: @unchecked Sendable {
                   HTTP status: \(statusCode)
                   Content-Type: \(contentType)
                   Accept-Ranges: \(acceptRanges)
+                  Content-Range: \(contentRange)
                 """)
                 
                 if statusCode == 200 || statusCode == 206 {

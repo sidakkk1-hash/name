@@ -200,6 +200,10 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     
     // MARK: - Playback Controls
     public func loadAndPlay(videoId: String) {
+        if PlayerEngine.shared.forceNativeOnly {
+            print("[WKAudioEngine] loadAndPlay BLOCKED: Force Native-Only is enabled.")
+            return
+        }
         self.currentVideoId = videoId
         let escaped = videoId.replacingOccurrences(of: "'", with: "\\'")
         let js = "loadVideo('\(escaped)');"
@@ -207,6 +211,10 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
     }
     
     public func play() {
+        if PlayerEngine.shared.forceNativeOnly {
+            print("[WKAudioEngine] play BLOCKED: Force Native-Only is enabled.")
+            return
+        }
         webView?.evaluateJavaScript("playVideo();", completionHandler: nil)
     }
     

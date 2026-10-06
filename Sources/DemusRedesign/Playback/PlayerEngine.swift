@@ -22,9 +22,47 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
-    public private(set) var isUsingNativeEngine: Bool = false
+    public private(set) var isUsingNativeEngine: Bool = true
     public private(set) var nativePlaybackConfirmed: Bool = false
     public private(set) var lastFailureReason: String?
+    
+    public var forceNativeOnly: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: "demus_force_native_only") == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: "demus_force_native_only")
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "demus_force_native_only")
+            if newValue {
+                Task { @MainActor in
+                    WKAudioEngine.shared.pause()
+                }
+            }
+        }
+    }
+    
+    public struct DiagnosticSnapshot: Identifiable, Sendable {
+        public let id = UUID()
+        public let label: String
+        public let timestamp: Date
+        public let playerIdentifier: String
+        public let itemIdentifier: String
+        public let currentTime: Double
+        public let rate: Float
+        public let timeControlStatus: String
+        public let itemStatus: String
+        public let audioSessionCategory: String
+        public let lastInterruption: String
+        public let lastRouteChange: String
+        public let lastNativeError: String
+    }
+    
+    public private(set) var diagnosticSnapshots: [DiagnosticSnapshot] = []
+    public private(set) var lastInterruptionEvent: String = "None"
+    public private(set) var lastRouteChangeEvent: String = "None"
+    
     public var activeEngineName: String {
         isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine fallback"
     }
@@ -74,6 +112,7 @@ public final class PlayerEngine: @unchecked Sendable {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
+    private var willResignActiveObserver: NSObjectProtocol?
     
     public init() {
         configureAudioSession()
@@ -135,6 +174,8 @@ public final class PlayerEngine: @unchecked Sendable {
                   let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             
+            self.lastInterruptionEvent = type == .began ? "Began" : "Ended"
+            
             if type == .began {
                 Task { @MainActor in
                     if self.isUsingNativeEngine {
@@ -173,6 +214,8 @@ public final class PlayerEngine: @unchecked Sendable {
                   let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
                   let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
             
+            self.lastRouteChangeEvent = "Reason: \(reasonValue)"
+            
             // If headphones unplugged or Bluetooth disconnected, pause playback
             if reason == .oldDeviceUnavailable {
                 Task { @MainActor in
@@ -193,21 +236,32 @@ public final class PlayerEngine: @unchecked Sendable {
     
     private func setupBackgroundDiagnosticObserver() {
         #if canImport(UIKit)
+        willResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.recordSnapshot(label: "BEFORE BACKGROUND")
+        }
+        
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.logBackgroundDiagnostic(label: "Snapshot 1 (Immediate)")
+            // Background callbacks must LOG ONLY. Do not call play, pause, or touch player.
+            self?.recordSnapshot(label: "BACKGROUND 0s")
             Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                self?.logBackgroundDiagnostic(label: "Snapshot 2 (3s later)")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                self?.recordSnapshot(label: "BACKGROUND +1s")
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                self?.recordSnapshot(label: "BACKGROUND +5s")
             }
         }
         #endif
     }
     
-    private func logBackgroundDiagnostic(label: String) {
+    private func recordSnapshot(label: String) {
         Task { @MainActor in
             let native = NativeAudioEngine.shared
             let p = native.player
@@ -216,31 +270,41 @@ public final class PlayerEngine: @unchecked Sendable {
             let itemId = item != nil ? String(describing: ObjectIdentifier(item!)) : "nil"
             let rate = p.rate
             let curTime = p.currentTime().seconds
-            let tcStatus = p.timeControlStatus.rawValue
-            let itemStatus = item?.status.rawValue ?? -1
+            let tcStatus = native.timeControlStatusString
+            let itemStatus = native.itemStatusString
             #if canImport(AVFAudio)
             let cat = AVAudioSession.sharedInstance().category.rawValue
             #else
             let cat = "unknown"
             #endif
-            #if canImport(UIKit)
-            let appState = UIApplication.shared.applicationState.rawValue
-            #else
-            let appState = 0
-            #endif
+            
+            let snapshot = DiagnosticSnapshot(
+                label: label,
+                timestamp: Date(),
+                playerIdentifier: playerId,
+                itemIdentifier: itemId,
+                currentTime: curTime,
+                rate: rate,
+                timeControlStatus: tcStatus,
+                itemStatus: itemStatus,
+                audioSessionCategory: cat,
+                lastInterruption: self.lastInterruptionEvent,
+                lastRouteChange: self.lastRouteChangeEvent,
+                lastNativeError: self.lastFailureReason ?? "None"
+            )
+            
+            self.diagnosticSnapshots.append(snapshot)
+            if self.diagnosticSnapshots.count > 10 {
+                self.diagnosticSnapshots.removeFirst()
+            }
             
             print("""
-            [BackgroundDiagnostic \(label)]
-              Engine: \(self.activeEngineName)
-              NativeConfirmed: \(native.nativePlaybackConfirmed)
-              player ObjectIdentifier: \(playerId)
-              item ObjectIdentifier: \(itemId)
-              rate: \(rate)
-              currentTime: \(curTime)
-              timeControlStatus: \(tcStatus)
-              item.status: \(itemStatus)
-              audioSession.category: \(cat)
-              applicationState: \(appState)
+            [BackgroundSnapshot \(label)]
+              player: \(playerId)
+              item: \(itemId)
+              currentTime: \(curTime)s | rate: \(rate) | tcStatus: \(tcStatus) | itemStatus: \(itemStatus)
+              audioCategory: \(cat) | lastError: \(self.lastFailureReason ?? "None")
+              interruption: \(self.lastInterruptionEvent) | routeChange: \(self.lastRouteChangeEvent)
             """)
         }
     }
@@ -257,6 +321,10 @@ public final class PlayerEngine: @unchecked Sendable {
         if let obs = backgroundObserver {
             NotificationCenter.default.removeObserver(obs)
             backgroundObserver = nil
+        }
+        if let obs = willResignActiveObserver {
+            NotificationCenter.default.removeObserver(obs)
+            willResignActiveObserver = nil
         }
     }
     
@@ -328,18 +396,26 @@ public final class PlayerEngine: @unchecked Sendable {
         // Attempt Native Audio Engine (AVPlayer) first for rock-solid background audio
         Task { @MainActor in
             print("[PlayerEngine] Attempting playback via NativeAudioEngine for: \(songToPlay.title) (\(currentVideoId))")
-            self.isUsingNativeEngine = false
+            self.isUsingNativeEngine = true
             let nativeStarted = await NativeAudioEngine.shared.loadAndPlay(song: songToPlay)
             if !nativeStarted {
-                print("""
-                ==================================================
-                Playback Engine: WKAudioEngine fallback
-                ==================================================
-                """)
-                print("[PlayerEngine] NativeAudioEngine load failed; falling back to WKAudioEngine for \(currentVideoId)")
-                self.isUsingNativeEngine = false
-                NativeAudioEngine.shared.cleanupPlayer()
-                WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+                if self.forceNativeOnly {
+                    print("[PlayerEngine] NativeAudioEngine load failed, but Force Native-Only is ON. Refusing WK fallback.")
+                    self.isUsingNativeEngine = true
+                    self.isPlaying = false
+                    self.isLoading = false
+                    self.errorMessage = NativeAudioEngine.shared.lastFailureReason
+                } else {
+                    print("""
+                    ==================================================
+                    Playback Engine: WKAudioEngine fallback
+                    ==================================================
+                    """)
+                    print("[PlayerEngine] NativeAudioEngine load failed; falling back to WKAudioEngine for \(currentVideoId)")
+                    self.isUsingNativeEngine = false
+                    NativeAudioEngine.shared.cleanupPlayer()
+                    WKAudioEngine.shared.loadAndPlay(videoId: currentVideoId)
+                }
             }
         }
         
@@ -643,9 +719,19 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     }
     
     public func nativeAudioEngineDidFail(error: String) {
-        self.isUsingNativeEngine = false
         self.nativePlaybackConfirmed = false
         self.lastFailureReason = error
+        self.errorMessage = error
+        
+        if forceNativeOnly {
+            print("[PlayerEngine] NativeAudioEngine failed: \(error), but Force Native-Only is ON. Refusing WK fallback.")
+            self.isUsingNativeEngine = true
+            self.isPlaying = false
+            self.isLoading = false
+            return
+        }
+        
+        self.isUsingNativeEngine = false
         print("""
         ==================================================
         Playback Engine: WKAudioEngine fallback

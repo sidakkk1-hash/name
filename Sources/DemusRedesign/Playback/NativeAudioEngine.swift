@@ -33,6 +33,25 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     public private(set) var lastFailureReason: String?
     public private(set) var currentSong: Song?
     
+    public struct AssetDiagnosticInfo: Sendable {
+        public let isPlayable: Bool
+        public let durationSeconds: Double
+        public let tracksCount: Int
+        public let trackMediaTypes: [String]
+    }
+    
+    public struct ErrorDiagnosticInfo: Sendable {
+        public let domain: String
+        public let code: Int
+        public let localizedDescription: String
+        public let underlyingError: String
+        public let errorLogEvents: String
+        public let accessLogEvents: String
+    }
+    
+    public private(set) var latestAssetDiagnostic: AssetDiagnosticInfo?
+    public private(set) var latestErrorDiagnostic: ErrorDiagnosticInfo?
+    
     private var timeObserverToken: Any?
     private var statusObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
@@ -51,6 +70,8 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         self.isReady = false
         self.nativePlaybackConfirmed = false
         self.lastFailureReason = nil
+        self.latestAssetDiagnostic = nil
+        self.latestErrorDiagnostic = nil
         
         let videoId = song.id
         print("[NativeAudioEngine] Resolving stream for videoId: \(videoId)")
@@ -74,7 +95,41 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         
         cleanupCurrentItem()
         
-        let item = AVPlayerItem(url: stream.url)
+        // Clean public AVURLAsset API without private HTTP headers
+        let asset = AVURLAsset(url: stream.url)
+        
+        // Asynchronously load public AVFoundation asset properties
+        var isPlayable = false
+        var assetDurationSeconds: Double = 0
+        var trackCount = 0
+        var trackTypes: [String] = []
+        
+        do {
+            isPlayable = try await asset.load(.isPlayable)
+            let dur = try await asset.load(.duration)
+            assetDurationSeconds = dur.seconds.isFinite ? dur.seconds : 0
+            let tracks = try await asset.load(.tracks)
+            trackCount = tracks.count
+            trackTypes = tracks.map { $0.mediaType.rawValue }
+        } catch {
+            print("[NativeAudioEngine] Public asset.load failed: \(error)")
+        }
+        
+        self.latestAssetDiagnostic = AssetDiagnosticInfo(
+            isPlayable: isPlayable,
+            durationSeconds: assetDurationSeconds,
+            tracksCount: trackCount,
+            trackMediaTypes: trackTypes
+        )
+        
+        print("""
+        [NativeAudioEngine] Asset Diagnostic:
+          isPlayable: \(isPlayable)
+          duration: \(assetDurationSeconds)s
+          tracks: \(trackCount) (\(trackTypes.joined(separator: ", ")))
+        """)
+        
+        let item = AVPlayerItem(asset: asset)
         self.playerItem = item
         
         setupObservers(for: item)
@@ -101,12 +156,41 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
                 case .failed:
                     self.isReady = false
                     self.nativePlaybackConfirmed = false
+                    
                     let nsErr = observedItem.error as NSError?
+                    let domain = nsErr?.domain ?? "AVFoundation"
                     let errCode = nsErr?.code ?? 0
                     let errDesc = observedItem.error?.localizedDescription ?? "unknown error"
-                    let reason = "Native failure: AVPlayerItemFailed [\(errCode)] \(errDesc)"
+                    let underlying = nsErr?.userInfo[NSUnderlyingErrorKey] as? NSError
+                    let underlyingStr = underlying != nil ? " | Under: [\(underlying!.domain):\(underlying!.code)] \(underlying!.localizedDescription)" : ""
+                    
+                    var errorLogSummary = "none"
+                    if let events = observedItem.errorLog()?.events, !events.isEmpty {
+                        errorLogSummary = events.map { "[\($0.errorDomain):\($0.errorStatusCode)] \($0.errorComment ?? "")" }.joined(separator: "; ")
+                    }
+                    
+                    var accessLogSummary = "none"
+                    if let events = observedItem.accessLog()?.events, !events.isEmpty {
+                        accessLogSummary = events.map { "HTTP:\($0.responseStatus) uri:\($0.uri ?? "") bytes:\($0.numberOfBytesTransferred)" }.joined(separator: "; ")
+                    }
+                    
+                    self.latestErrorDiagnostic = ErrorDiagnosticInfo(
+                        domain: domain,
+                        code: errCode,
+                        localizedDescription: errDesc,
+                        underlyingError: underlyingStr,
+                        errorLogEvents: errorLogSummary,
+                        accessLogEvents: accessLogSummary
+                    )
+                    
+                    let reason = "Native failure: [\(domain):\(errCode)] \(errDesc)\(underlyingStr)"
                     self.lastFailureReason = reason
-                    print("[NativeAudioEngine] Item failed: [\(errCode)] \(errDesc)")
+                    print("""
+                    [NativeAudioEngine] Item failed:
+                      Reason: \(reason)
+                      ErrorLog: \(errorLogSummary)
+                      AccessLog: \(accessLogSummary)
+                    """)
                     self.delegate?.nativeAudioEngineDidFail(error: reason)
                     
                 case .unknown:
@@ -171,7 +255,7 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         }
     }
     
-    // MARK: - Native Playback Verification (2-second advance check)
+    // MARK: - Native Playback Verification (3-second continuous advance check)
     private func verifyPlaybackAdvancing() async {
         // 1. Wait for player to enter playing state (up to 7.0 seconds)
         let startWait = Date()
@@ -211,35 +295,36 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
             return
         }
         
-        // 2. Measure currentTime advance over 2 seconds
+        // 2. Measure currentTime advance continuously for at least 3 seconds
         let time1 = player.currentTime().seconds
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
         if Task.isCancelled { return }
         let time2 = player.currentTime().seconds
+        let advance = time2 - time1
         
         print("""
-        [NativeAudioEngine] Advancing Verification:
+        [NativeAudioEngine] 3-Second Verification:
           time1: \(time1)
           time2: \(time2)
-          advance: \(time2 - time1)
+          advance: \(advance)s
           rate: \(player.rate)
           timeControlStatus: \(player.timeControlStatus.rawValue)
         """)
         
-        if time2 > time1 && (time2 - time1) >= 1.0 {
+        if time2 > time1 && advance >= 2.5 && player.rate > 0 && player.timeControlStatus == .playing {
             // Strict verification succeeded:
             // - stream URL resolved
             // - AVPlayerItem.status == .readyToPlay
             // - AVPlayer.timeControlStatus == .playing
             // - player.rate > 0
-            // - currentTime advances for at least 2 seconds
+            // - currentTime advances continuously for at least 3 seconds
             self.nativePlaybackConfirmed = true
             self.lastFailureReason = nil
             print("[NativeAudioEngine] Strict verification SUCCESSFUL! Confirmed Native AVPlayer active.")
             delegate?.nativeAudioEngineDidConfirmPlayback()
             delegate?.nativeAudioEngineDidChangeState(isPlaying: true, isLoading: false)
         } else {
-            let reason = "Native failure: CurrentTimeNotAdvancing"
+            let reason = "Native failure: StalledBefore3s (advanced: \(String(format: "%.2f", advance))s)"
             self.lastFailureReason = reason
             self.nativePlaybackConfirmed = false
             print("[NativeAudioEngine] Verification failed: \(reason)")

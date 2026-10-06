@@ -98,14 +98,22 @@ public struct SettingsV: View {
                 }
                 
                 // Diagnostics Section
-                Section("Playback Diagnostics") {
+                // Diagnostics Section
+                Section("Playback Diagnostics & Controls") {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.24 (Native Verified)")
+                        Text("v2.0.25 (Scientific Native)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
+                    
+                    Toggle("Force Native-Only Engine", isOn: Binding(
+                        get: { PlayerEngine.shared.forceNativeOnly },
+                        set: { PlayerEngine.shared.forceNativeOnly = $0 }
+                    ))
+                    .tint(.green)
+                    
                     HStack {
                         Text("Active Engine")
                         Spacer()
@@ -114,7 +122,7 @@ public struct SettingsV: View {
                             .font(.system(size: 13, weight: .medium))
                     }
                     HStack {
-                        Text("Native Confirmed")
+                        Text("Native Confirmed (>=3s)")
                         Spacer()
                         Text(PlayerEngine.shared.nativePlaybackConfirmed ? "Yes" : "No")
                             .foregroundStyle(PlayerEngine.shared.nativePlaybackConfirmed ? .green : .secondary)
@@ -149,13 +157,6 @@ public struct SettingsV: View {
                             .font(.system(size: 13))
                     }
                     HStack {
-                        Text("Last Native Error")
-                        Spacer()
-                        Text(PlayerEngine.shared.lastFailureReason ?? "None")
-                            .foregroundStyle(PlayerEngine.shared.lastFailureReason != nil ? .orange : AppleMusicTheme.secondaryLabel)
-                            .font(.system(size: 13))
-                    }
-                    HStack {
                         Text("Audio Session Category")
                         Spacer()
                         Text(PlayerEngine.shared.audioSessionCategoryString)
@@ -168,6 +169,141 @@ public struct SettingsV: View {
                         Text(PlayerEngine.shared.appStateString)
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                             .font(.system(size: 13))
+                    }
+                }
+                
+                // Stream Validation Diagnostics
+                if let streamDiag = StreamResolutionService.shared.latestDiagnostic {
+                    Section("Stream Resource Validation") {
+                        HStack {
+                            Text("URL Host")
+                            Spacer()
+                            Text(streamDiag.urlHost)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("HTTP Validation Status")
+                            Spacer()
+                            Text("\(streamDiag.httpStatus)")
+                                .foregroundStyle(streamDiag.httpStatus == 200 || streamDiag.httpStatus == 206 ? .green : .red)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        HStack {
+                            Text("Content-Type")
+                            Spacer()
+                            Text(streamDiag.contentType)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Accept-Ranges")
+                            Spacer()
+                            Text(streamDiag.acceptRanges)
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Content-Range")
+                            Spacer()
+                            Text(streamDiag.contentRange)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Codec & Bitrate")
+                            Spacer()
+                            Text("\(streamDiag.codec) (\(streamDiag.bitrate / 1000) kbps)")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                    }
+                }
+                
+                // AVFoundation Asset & Error Diagnostics
+                Section("AVFoundation Diagnostics") {
+                    if let assetDiag = NativeAudioEngine.shared.latestAssetDiagnostic {
+                        HStack {
+                            Text("Asset isPlayable")
+                            Spacer()
+                            Text(assetDiag.isPlayable ? "True" : "False")
+                                .foregroundStyle(assetDiag.isPlayable ? .green : .red)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        HStack {
+                            Text("Asset Duration")
+                            Spacer()
+                            Text(String(format: "%.1fs", assetDiag.durationSeconds))
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Tracks")
+                            Spacer()
+                            Text("\(assetDiag.tracksCount) (\(assetDiag.trackMediaTypes.joined(separator: ", ")))")
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                    }
+                    
+                    HStack(alignment: .top) {
+                        Text("Last Error")
+                        Spacer()
+                        Text(PlayerEngine.shared.lastFailureReason ?? "None")
+                            .foregroundStyle(PlayerEngine.shared.lastFailureReason != nil ? .orange : AppleMusicTheme.secondaryLabel)
+                            .font(.system(size: 12))
+                            .multilineTextAlignment(.trailing)
+                    }
+                    
+                    if let errDiag = NativeAudioEngine.shared.latestErrorDiagnostic {
+                        if errDiag.errorLogEvents != "none" {
+                            HStack(alignment: .top) {
+                                Text("errorLog")
+                                Spacer()
+                                Text(errDiag.errorLogEvents)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.orange)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                        if errDiag.accessLogEvents != "none" {
+                            HStack(alignment: .top) {
+                                Text("accessLog")
+                                Spacer()
+                                Text(errDiag.accessLogEvents)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                    }
+                }
+                
+                // Background Snapshots Section
+                if !PlayerEngine.shared.diagnosticSnapshots.isEmpty {
+                    Section("Background Lifecycle Snapshots") {
+                        ForEach(PlayerEngine.shared.diagnosticSnapshots) { snap in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(snap.label)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(AppleMusicTheme.accent)
+                                    Spacer()
+                                    Text(String(format: "Time: %.1fs | Rate: %.1f", snap.currentTime, snap.rate))
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                }
+                                Text("Status: \(snap.itemStatus) | TC: \(snap.timeControlStatus) | Category: \(snap.audioSessionCategory)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                if snap.lastNativeError != "None" {
+                                    Text("Err: \(snap.lastNativeError)")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
                 }
                 
