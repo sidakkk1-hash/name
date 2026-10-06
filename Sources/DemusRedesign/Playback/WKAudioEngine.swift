@@ -33,7 +33,6 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
         super.init()
         setupAudioSession()
         setupWebView()
-        setupBackgroundObservers()
     }
     
     // MARK: - Audio Session Setup
@@ -49,26 +48,6 @@ public final class WKAudioEngine: NSObject, WKScriptMessageHandler, @unchecked S
             try session.setActive(true)
         } catch {
             print("[WKAudioEngine] AVAudioSession setup error:", error)
-        }
-        #endif
-    }
-    
-    // MARK: - Background Notification Observers
-    private func setupBackgroundObservers() {
-        #if canImport(UIKit)
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            #if canImport(AVFAudio)
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {}
-            #endif
-            Task { @MainActor [weak self] in
-                self?.webView?.evaluateJavaScript("if (player && player.playVideo) { player.playVideo(); }")
-            }
         }
         #endif
     }

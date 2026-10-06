@@ -92,8 +92,16 @@ public struct SettingsV: View {
                         Text("Playback Engine")
                         Spacer()
                         Text(PlayerEngine.shared.activeEngineName)
-                            .foregroundStyle(AppleMusicTheme.accent)
+                            .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .secondary)
                             .font(.system(size: 14, weight: .semibold))
+                    }
+                    
+                    HStack {
+                        Text("Diagnostics")
+                        Spacer()
+                        Text(PlayerEngine.shared.diagnosticSummary)
+                            .foregroundStyle(PlayerEngine.shared.isUsingNativeEngine ? AppleMusicTheme.accent : .orange)
+                            .font(.system(size: 13, weight: .medium))
                     }
                 }
                 
