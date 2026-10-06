@@ -34,9 +34,125 @@ public final class StreamResolutionService: @unchecked Sendable {
         public let codec: String
         public let bitrate: Int
         public let urlHost: String
+        public let expireTimestamp: String?
+    }
+    
+    public struct HLSDiagnosticInfo: Sendable {
+        public let sidxValid: Bool
+        public let segmentCount: Int
+        public let initRange: String
+        public let indexRange: String
+        public let targetDuration: Int
+        public let playlistGenerated: Bool
+        public let firstMediaRange: String
+        public let lastMediaRange: String
+        public let totalDuration: Double
+        public let failureReason: String?
     }
     
     public private(set) var latestDiagnostic: StreamDiagnosticInfo?
+    public private(set) var latestHLSDiagnostic: HLSDiagnosticInfo?
+    
+    // MARK: - SIDX Parser (ISO/IEC 14496-12)
+    public struct SIDXParser {
+        public struct Segment: Sendable {
+            public let length: Int
+            public let offset: Int
+            public let duration: Double
+        }
+        
+        public static func parse(data: Data, indexEnd: Int, contentLength: Int) throws -> (timescale: Int, segments: [Segment], targetDuration: Int) {
+            guard data.count >= 32 else {
+                throw NSError(domain: "SIDXParser", code: 1, userInfo: [NSLocalizedDescriptionKey: "SIDX data too small: \(data.count) bytes"])
+            }
+            
+            func readUInt32(_ offset: Int) -> UInt32 {
+                let b0 = UInt32(data[offset])
+                let b1 = UInt32(data[offset + 1])
+                let b2 = UInt32(data[offset + 2])
+                let b3 = UInt32(data[offset + 3])
+                return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+            }
+            
+            func readUInt16(_ offset: Int) -> UInt16 {
+                let b0 = UInt16(data[offset])
+                let b1 = UInt16(data[offset + 1])
+                return (b0 << 8) | b1
+            }
+            
+            func readUInt64(_ offset: Int) -> UInt64 {
+                let hi = UInt64(readUInt32(offset))
+                let lo = UInt64(readUInt32(offset + 4))
+                return (hi << 32) | lo
+            }
+            
+            let boxTypeBytes = [data[4], data[5], data[6], data[7]]
+            let boxTypeStr = String(bytes: boxTypeBytes, encoding: .ascii) ?? ""
+            guard boxTypeStr == "sidx" else {
+                throw NSError(domain: "SIDXParser", code: 2, userInfo: [NSLocalizedDescriptionKey: "Box type is '\(boxTypeStr)', expected 'sidx'"])
+            }
+            
+            let version = data[8]
+            let timescale = Int(readUInt32(16))
+            guard timescale > 0 else {
+                throw NSError(domain: "SIDXParser", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid timescale: \(timescale)"])
+            }
+            
+            var offset = 20
+            var firstOffset: Int = 0
+            if version == 0 {
+                offset += 4 // earliest_presentation_time
+                firstOffset = Int(readUInt32(offset))
+                offset += 4
+            } else {
+                offset += 8 // earliest_presentation_time
+                firstOffset = Int(readUInt64(offset))
+                offset += 8
+            }
+            
+            offset += 2 // reserved
+            let referenceCount = Int(readUInt16(offset))
+            offset += 2
+            
+            guard referenceCount > 0 else {
+                throw NSError(domain: "SIDXParser", code: 4, userInfo: [NSLocalizedDescriptionKey: "Reference count is 0"])
+            }
+            
+            guard data.count >= offset + (referenceCount * 12) else {
+                throw NSError(domain: "SIDXParser", code: 5, userInfo: [NSLocalizedDescriptionKey: "SIDX truncated: expected \(offset + (referenceCount * 12)) bytes, got \(data.count)"])
+            }
+            
+            let firstMediaOffset = indexEnd + 1 + firstOffset
+            var currOffset = firstMediaOffset
+            var segments: [Segment] = []
+            var maxDur: Double = 0.0
+            
+            for i in 0..<referenceCount {
+                let refOff = offset + (i * 12)
+                let info = readUInt32(refOff)
+                let subDuration = readUInt32(refOff + 4)
+                
+                let refType = (info >> 31) & 0x01
+                guard refType == 0 else {
+                    throw NSError(domain: "SIDXParser", code: 6, userInfo: [NSLocalizedDescriptionKey: "Reference \(i) has nested sidx (ref_type = 1)"])
+                }
+                
+                let refSize = Int(info & 0x7FFFFFFF)
+                let durSec = Double(subDuration) / Double(timescale)
+                if durSec > maxDur { maxDur = durSec }
+                
+                guard currOffset + refSize <= contentLength else {
+                    throw NSError(domain: "SIDXParser", code: 7, userInfo: [NSLocalizedDescriptionKey: "Segment \(i) (range \(currOffset)-\(currOffset + refSize)) exceeds contentLength \(contentLength)"])
+                }
+                
+                segments.append(Segment(length: refSize, offset: currOffset, duration: durSec))
+                currOffset += refSize
+            }
+            
+            let targetDuration = max(1, Int(ceil(maxDur)))
+            return (timescale, segments, targetDuration)
+        }
+    }
     
     public init(client: HTTPClient = .shared) {
         self.client = client
@@ -238,6 +354,162 @@ public final class StreamResolutionService: @unchecked Sendable {
                 
                 if statusCode == 200 || statusCode == 206 {
                     let streamDuration = durationMs > 0 ? (durationMs / 1000.0) : songDuration
+                    let expireParam = URLComponents(url: audioURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "expire" })?.value
+                    
+                    self.latestDiagnostic = StreamDiagnosticInfo(
+                        httpStatus: statusCode,
+                        contentType: contentType,
+                        acceptRanges: acceptRanges,
+                        contentRange: contentRange,
+                        contentLength: contentLength,
+                        mimeType: mime,
+                        codec: audioCodec,
+                        bitrate: bitrate,
+                        urlHost: host,
+                        expireTimestamp: expireParam
+                    )
+                    
+                    // Attempt Option A: SIDX-based HLS playlist generation
+                    if let initRangeDict = fmt["initRange"] as? [String: Any],
+                       let indexRangeDict = fmt["indexRange"] as? [String: Any],
+                       let initStartStr = initRangeDict["start"] as? String,
+                       let initEndStr = initRangeDict["end"] as? String,
+                       let idxStartStr = indexRangeDict["start"] as? String,
+                       let idxEndStr = indexRangeDict["end"] as? String,
+                       let initStart = Int(initStartStr),
+                       let initEnd = Int(initEndStr),
+                       let idxStart = Int(idxStartStr),
+                       let idxEnd = Int(idxEndStr) {
+                        
+                        let cLen = Int(fmt["contentLength"] as? String ?? "0") ?? 0
+                        
+                        print("""
+                        [StreamResolution] SIDX Preflight:
+                          host: \(host)
+                          initRange: \(initStart)-\(initEnd)
+                          indexRange: \(idxStart)-\(idxEnd)
+                          contentLength: \(cLen)
+                          expire: \(expireParam ?? "none")
+                        """)
+                        
+                        do {
+                            var sidxReq = URLRequest(url: audioURL)
+                            sidxReq.httpMethod = "GET"
+                            sidxReq.setValue("bytes=\(idxStart)-\(idxEnd)", forHTTPHeaderField: "Range")
+                            sidxReq.setValue(iosUA, forHTTPHeaderField: "User-Agent")
+                            
+                            let (sidxData, sidxResp) = try await URLSession.shared.data(for: sidxReq)
+                            guard let sidxHttp = sidxResp as? HTTPURLResponse, (sidxHttp.statusCode == 200 || sidxHttp.statusCode == 206) else {
+                                let code = (sidxResp as? HTTPURLResponse)?.statusCode ?? -1
+                                throw NSError(domain: "SIDXFetch", code: code, userInfo: [NSLocalizedDescriptionKey: "SIDX fetch returned HTTP \(code)"])
+                            }
+                            
+                            let (timescale, segments, targetDuration) = try SIDXParser.parse(data: sidxData, indexEnd: idxEnd, contentLength: cLen)
+                            
+                            // Validate playlist syntax (Rule 9)
+                            let initLen = initEnd - initStart + 1
+                            guard !segments.isEmpty else {
+                                throw NSError(domain: "HLSValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: "Segment list is empty"])
+                            }
+                            
+                            for i in 0..<segments.count {
+                                let seg = segments[i]
+                                guard seg.duration <= Double(targetDuration) + 0.001 else {
+                                    throw NSError(domain: "HLSValidation", code: 2, userInfo: [NSLocalizedDescriptionKey: "Segment \(i) duration \(seg.duration)s exceeds TARGETDURATION \(targetDuration)s"])
+                                }
+                                guard seg.offset + seg.length <= cLen else {
+                                    throw NSError(domain: "HLSValidation", code: 3, userInfo: [NSLocalizedDescriptionKey: "Segment \(i) range exceeds contentLength \(cLen)"])
+                                }
+                                if i > 0 {
+                                    let prev = segments[i - 1]
+                                    guard prev.offset + prev.length == seg.offset else {
+                                        throw NSError(domain: "HLSValidation", code: 5, userInfo: [NSLocalizedDescriptionKey: "Segment \(i) offset \(seg.offset) does not immediately follow segment \(i - 1) end \(prev.offset + prev.length)"])
+                                    }
+                                }
+                            }
+                            
+                            let lastSeg = segments.last!
+                            guard lastSeg.offset + lastSeg.length == cLen else {
+                                throw NSError(domain: "HLSValidation", code: 4, userInfo: [NSLocalizedDescriptionKey: "Last segment end \(lastSeg.offset + lastSeg.length) does not match contentLength \(cLen)"])
+                            }
+                            
+                            // Generate HLS playlist string
+                            var m3u8Lines = [
+                                "#EXTM3U",
+                                "#EXT-X-VERSION:7",
+                                "#EXT-X-TARGETDURATION:\(targetDuration)",
+                                "#EXT-X-MEDIA-SEQUENCE:0",
+                                "#EXT-X-PLAYLIST-TYPE:VOD",
+                                "#EXT-X-MAP:URI=\"\(audioURL.absoluteString)\",BYTERANGE=\"\(initLen)@\(initStart)\""
+                            ]
+                            
+                            for seg in segments {
+                                m3u8Lines.append(String(format: "#EXTINF:%.5f,", seg.duration))
+                                m3u8Lines.append("#EXT-X-BYTERANGE:\(seg.length)@\(seg.offset)")
+                                m3u8Lines.append(audioURL.absoluteString)
+                            }
+                            m3u8Lines.append("#EXT-X-ENDLIST")
+                            let m3u8Content = m3u8Lines.joined(separator: "\n")
+                            
+                            let tempDir = FileManager.default.temporaryDirectory
+                            let m3u8URL = tempDir.appendingPathComponent("demus_\(videoId).m3u8")
+                            try m3u8Content.write(to: m3u8URL, atomically: true, encoding: .utf8)
+                            
+                            let totalDur = segments.reduce(0.0) { $0 + $1.duration }
+                            let firstMediaRange = "\(segments[0].length)@\(segments[0].offset)"
+                            let lastMediaRange = "\(lastSeg.length)@\(lastSeg.offset)"
+                            
+                            self.latestHLSDiagnostic = HLSDiagnosticInfo(
+                                sidxValid: true,
+                                segmentCount: segments.count,
+                                initRange: "\(initLen)@\(initStart)",
+                                indexRange: "\(idxStart)-\(idxEnd)",
+                                targetDuration: targetDuration,
+                                playlistGenerated: true,
+                                firstMediaRange: firstMediaRange,
+                                lastMediaRange: lastMediaRange,
+                                totalDuration: totalDur,
+                                failureReason: nil
+                            )
+                            
+                            print("""
+                            [StreamResolution] HLS Generated Successfully:
+                              timescale: \(timescale)
+                              segments: \(segments.count)
+                              targetDuration: \(targetDuration)
+                              initRange: \(initLen)@\(initStart)
+                              firstMediaRange: \(firstMediaRange)
+                              lastMediaRange: \(lastMediaRange)
+                              totalDuration: \(totalDur)s
+                            """)
+                            
+                            return ResolvedStream(
+                                url: m3u8URL,
+                                isHLS: true,
+                                duration: totalDur > 0 ? totalDur : streamDuration,
+                                bitrate: bitrate,
+                                mimeType: "application/x-mpegURL",
+                                headers: nil
+                            )
+                        } catch {
+                            print("[StreamResolution] SIDX parse/HLS generation error: \(error)")
+                            self.latestHLSDiagnostic = HLSDiagnosticInfo(
+                                sidxValid: false,
+                                segmentCount: 0,
+                                initRange: "\(initStart)-\(initEnd)",
+                                indexRange: "\(idxStart)-\(idxEnd)",
+                                targetDuration: 0,
+                                playlistGenerated: false,
+                                firstMediaRange: "none",
+                                lastMediaRange: "none",
+                                totalDuration: 0,
+                                failureReason: error.localizedDescription
+                            )
+                            // Abort native playback if validation fails (Rule 1)
+                            throw StreamResolutionError.streamResolutionFailed
+                        }
+                    }
+                    
                     return ResolvedStream(
                         url: audioURL,
                         isHLS: false,

@@ -103,7 +103,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.25 (Scientific Native)")
+                        Text("v2.0.26 (Native SIDX-HLS)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
@@ -216,6 +216,85 @@ public struct SettingsV: View {
                             Text("\(streamDiag.codec) (\(streamDiag.bitrate / 1000) kbps)")
                                 .font(.system(size: 13))
                                 .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                    }
+                }
+                
+                // HLS Playlist & SIDX Diagnostics
+                if let hlsDiag = StreamResolutionService.shared.latestHLSDiagnostic {
+                    Section("HLS Playlist & SIDX Diagnostics") {
+                        HStack {
+                            Text("SIDX Valid")
+                            Spacer()
+                            Text(hlsDiag.sidxValid ? "Yes" : "No")
+                                .foregroundStyle(hlsDiag.sidxValid ? .green : .red)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        HStack {
+                            Text("Segment Count")
+                            Spacer()
+                            Text("\(hlsDiag.segmentCount)")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Init Range")
+                            Spacer()
+                            Text(hlsDiag.initRange)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Index Range")
+                            Spacer()
+                            Text(hlsDiag.indexRange)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Target Duration")
+                            Spacer()
+                            Text("\(hlsDiag.targetDuration)s")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Playlist Generated")
+                            Spacer()
+                            Text(hlsDiag.playlistGenerated ? "Yes" : "No")
+                                .foregroundStyle(hlsDiag.playlistGenerated ? .green : .red)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        HStack {
+                            Text("First Media Range")
+                            Spacer()
+                            Text(hlsDiag.firstMediaRange)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Last Media Range")
+                            Spacer()
+                            Text(hlsDiag.lastMediaRange)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        HStack {
+                            Text("Total Duration")
+                            Spacer()
+                            Text(String(format: "%.1fs", hlsDiag.totalDuration))
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                        }
+                        if let reason = hlsDiag.failureReason {
+                            HStack(alignment: .top) {
+                                Text("Failure Reason")
+                                Spacer()
+                                Text(reason)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
                     }
                 }
