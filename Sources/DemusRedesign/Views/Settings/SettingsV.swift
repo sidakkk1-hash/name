@@ -102,7 +102,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.23 (Native Direct)")
+                        Text("v2.0.24 (Native Verified)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
