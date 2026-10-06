@@ -171,7 +171,7 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
                     
                     var accessLogSummary = "none"
                     if let events = observedItem.accessLog()?.events, !events.isEmpty {
-                        accessLogSummary = events.map { "HTTP:\($0.responseStatus) uri:\($0.uri ?? "") bytes:\($0.numberOfBytesTransferred)" }.joined(separator: "; ")
+                        accessLogSummary = events.map { "bytes:\($0.numberOfBytesTransferred) srv:\($0.serverAddress ?? "")" }.joined(separator: "; ")
                     }
                     
                     self.latestErrorDiagnostic = ErrorDiagnosticInfo(
