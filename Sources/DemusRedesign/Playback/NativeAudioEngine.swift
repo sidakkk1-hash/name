@@ -72,17 +72,9 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
             return false
         }
         
-        // Build AVURLAsset with verified headers
-        let asset: AVURLAsset
-        if let headers = stream.headers, !headers.isEmpty {
-            asset = AVURLAsset(url: stream.url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-        } else {
-            asset = AVURLAsset(url: stream.url)
-        }
-        
         cleanupCurrentItem()
         
-        let item = AVPlayerItem(asset: asset)
+        let item = AVPlayerItem(url: stream.url)
         self.playerItem = item
         
         setupObservers(for: item)
@@ -109,9 +101,12 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
                 case .failed:
                     self.isReady = false
                     self.nativePlaybackConfirmed = false
-                    let reason = "Native failure: AVPlayerItemFailed"
+                    let nsErr = observedItem.error as NSError?
+                    let errCode = nsErr?.code ?? 0
+                    let errDesc = observedItem.error?.localizedDescription ?? "unknown error"
+                    let reason = "Native failure: AVPlayerItemFailed [\(errCode)] \(errDesc)"
                     self.lastFailureReason = reason
-                    print("[NativeAudioEngine] Item failed: \(observedItem.error?.localizedDescription ?? "unknown")")
+                    print("[NativeAudioEngine] Item failed: [\(errCode)] \(errDesc)")
                     self.delegate?.nativeAudioEngineDidFail(error: reason)
                     
                 case .unknown:
@@ -178,15 +173,18 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     
     // MARK: - Native Playback Verification (2-second advance check)
     private func verifyPlaybackAdvancing() async {
-        // 1. Wait for player to enter playing state (up to 3.0 seconds)
+        // 1. Wait for player to enter playing state (up to 7.0 seconds)
         let startWait = Date()
-        while player.timeControlStatus != .playing && Date().timeIntervalSince(startWait) < 3.0 {
+        while player.timeControlStatus != .playing && Date().timeIntervalSince(startWait) < 7.0 {
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
         }
         
         guard let currentItem = playerItem, currentItem.status == .readyToPlay else {
-            let reason = "Native failure: AVPlayerItemFailed"
+            let nsErr = playerItem?.error as NSError?
+            let errCode = nsErr?.code ?? 0
+            let errDesc = playerItem?.error?.localizedDescription ?? "item not ready"
+            let reason = "Native failure: AVPlayerItemFailed [\(errCode)] \(errDesc)"
             self.lastFailureReason = reason
             self.nativePlaybackConfirmed = false
             print("[NativeAudioEngine] Verification failed: \(reason)")
@@ -195,7 +193,8 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         }
         
         if player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-            let reason = "Native failure: WaitingToMinimizeStalls"
+            let waitReason = player.reasonForWaitingToPlay?.rawValue ?? "stalling"
+            let reason = "Native failure: WaitingToMinimizeStalls (\(waitReason))"
             self.lastFailureReason = reason
             self.nativePlaybackConfirmed = false
             print("[NativeAudioEngine] Verification failed: \(reason)")

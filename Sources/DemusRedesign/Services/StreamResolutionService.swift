@@ -190,7 +190,7 @@ public final class StreamResolutionService: @unchecked Sendable {
                         duration: streamDuration,
                         bitrate: bitrate,
                         mimeType: mime,
-                        headers: ["User-Agent": iosUA]
+                        headers: nil
                     )
                 } else if statusCode == 403 {
                     print("[StreamResolution] Direct stream URL test failed with HTTP 403 Forbidden!")
