@@ -23,13 +23,15 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isRepeat: Bool = false
     public var errorMessage: String?
     public private(set) var isUsingNativeEngine: Bool = false
+    public private(set) var nativePlaybackConfirmed: Bool = false
+    public private(set) var lastFailureReason: String?
     public var activeEngineName: String {
         isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine fallback"
     }
     public var diagnosticSummary: String {
-        if isUsingNativeEngine && NativeAudioEngine.shared.nativePlaybackConfirmed {
+        if isUsingNativeEngine && nativePlaybackConfirmed {
             return "Native AVPlayer"
-        } else if let reason = NativeAudioEngine.shared.lastFailureReason {
+        } else if let reason = lastFailureReason {
             return reason
         } else {
             return "WKAudioEngine fallback"
@@ -374,6 +376,8 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     public func pause() {
+        print("[PlayerEngine] pause() CALLED! Callstack:")
+        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
         if isPlaying {
             togglePlay()
         }
@@ -392,6 +396,8 @@ public final class PlayerEngine: @unchecked Sendable {
         #endif
         
         if isPlaying {
+            print("[PlayerEngine] togglePlay -> PAUSE triggered! Callstack:")
+            Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
             userIntentPlaying = false
             self.isPlaying = false
             self.isLoading = false
@@ -581,7 +587,11 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     
     public func nativeAudioEngineDidConfirmPlayback() {
         self.isUsingNativeEngine = true
-        WKAudioEngine.shared.pause()
+        self.nativePlaybackConfirmed = true
+        self.lastFailureReason = nil
+        Task { @MainActor in
+            WKAudioEngine.shared.pause()
+        }
         print("""
         ==================================================
         Playback Engine: Native AVPlayer
@@ -615,6 +625,8 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     
     public func nativeAudioEngineDidFail(error: String) {
         self.isUsingNativeEngine = false
+        self.nativePlaybackConfirmed = false
+        self.lastFailureReason = error
         print("""
         ==================================================
         Playback Engine: WKAudioEngine fallback

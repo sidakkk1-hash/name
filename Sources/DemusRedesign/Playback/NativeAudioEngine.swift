@@ -259,6 +259,8 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     }
     
     public func pause() {
+        print("[NativeAudioEngine] pause() CALLED! Callstack:")
+        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
         player.pause()
     }
     
@@ -272,6 +274,8 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     }
     
     public func cleanupCurrentItem() {
+        print("[NativeAudioEngine] cleanupCurrentItem() / cleanupPlayer() CALLED! Callstack:")
+        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
         verificationTask?.cancel()
         verificationTask = nil
         
