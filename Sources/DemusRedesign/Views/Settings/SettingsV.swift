@@ -100,6 +100,13 @@ public struct SettingsV: View {
                 // Diagnostics Section
                 Section("Playback Diagnostics") {
                     HStack {
+                        Text("Build Version")
+                        Spacer()
+                        Text("v2.0.23 (Native Direct)")
+                            .foregroundStyle(AppleMusicTheme.accent)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    HStack {
                         Text("Active Engine")
                         Spacer()
                         Text(PlayerEngine.shared.activeEngineName)
