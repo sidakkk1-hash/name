@@ -35,6 +35,30 @@ public final class StreamResolutionService: @unchecked Sendable {
         public let bitrate: Int
         public let urlHost: String
         public let expireTimestamp: String?
+        
+        public init(
+            httpStatus: Int,
+            contentType: String,
+            acceptRanges: String,
+            contentRange: String,
+            contentLength: String,
+            mimeType: String,
+            codec: String,
+            bitrate: Int,
+            urlHost: String,
+            expireTimestamp: String? = nil
+        ) {
+            self.httpStatus = httpStatus
+            self.contentType = contentType
+            self.acceptRanges = acceptRanges
+            self.contentRange = contentRange
+            self.contentLength = contentLength
+            self.mimeType = mimeType
+            self.codec = codec
+            self.bitrate = bitrate
+            self.urlHost = urlHost
+            self.expireTimestamp = expireTimestamp
+        }
     }
     
     public struct HLSDiagnosticInfo: Sendable {
