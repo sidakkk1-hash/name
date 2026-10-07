@@ -213,7 +213,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.isLoading = true
         self.userIntentPlaying = true
         self.isCrossfading = false
-        WKEmbedAudioEngine.shared.setVolume(self.volume)
+        resetEngineVolume()
         let now = Date().timeIntervalSince1970
         self.lastUserToggleTime = now
         self.lastActionTime = now
@@ -518,6 +518,13 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isCrossfading = false
         }
     }
+    
+    private func resetEngineVolume() {
+        let v = volume
+        Task { @MainActor in
+            WKEmbedAudioEngine.shared.setVolume(v)
+        }
+    }
 }
 
 // MARK: - WKEmbedAudioEngineDelegate
@@ -559,7 +566,7 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
 
     public func embedAudioEngineDidEnd() {
         isCrossfading = false
-        WKEmbedAudioEngine.shared.setVolume(self.volume)
+        resetEngineVolume()
         handleSongDidEnd()
     }
     
@@ -567,7 +574,7 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
         self.isPlaying = false
         self.isLoading = false
         self.isCrossfading = false
-        WKEmbedAudioEngine.shared.setVolume(self.volume)
+        resetEngineVolume()
         self.errorMessage = error
         updateLockScreen()
         print("[PlayerEngine] WKEmbedAudioEngine error: \(error)")
