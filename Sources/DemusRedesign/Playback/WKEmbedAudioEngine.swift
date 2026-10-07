@@ -406,6 +406,10 @@ public final class WKEmbedAudioEngine: NSObject, WKScriptMessageHandler, WKNavig
                     } catch(e) {}
                 }
                 if (player && typeof player.loadVideoById === "function") {
+                    try {
+                        if (typeof player.unMute === "function") { player.unMute(); }
+                        if (typeof player.setVolume === "function") { player.setVolume(100); }
+                    } catch(e) {}
                     player.loadVideoById("\(videoId)");
                     alreadyPlayed = true;
                     try { if (audio) { audio.play(); } } catch(e) {}

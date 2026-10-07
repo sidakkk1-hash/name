@@ -213,7 +213,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.isLoading = true
         self.userIntentPlaying = true
         self.isCrossfading = false
-        MusicHapticsManager.shared.triggerTrackChangeHaptic()
+        WKEmbedAudioEngine.shared.setVolume(self.volume)
         let now = Date().timeIntervalSince1970
         self.lastUserToggleTime = now
         self.lastActionTime = now
@@ -250,7 +250,7 @@ public final class PlayerEngine: @unchecked Sendable {
             )
         }
         
-        // Auto-fetch algorithmic Up Next songs like YouTube Music
+        // Pre-fetch algorithmic Up Next songs immediately so queue is always populated
         fetchRadioQueue(for: currentVideoId)
         
         // Background lyrics pre-fetching
@@ -280,7 +280,9 @@ public final class PlayerEngine: @unchecked Sendable {
     private func fetchRadioQueue(for videoId: String) {
         Task {
             let radioSongs = await RadioService.shared.fetchUpNext(videoId: videoId)
-            self.appendRadioSongs(radioSongs)
+            await MainActor.run {
+                self.appendRadioSongs(radioSongs)
+            }
         }
     }
     
@@ -499,7 +501,7 @@ public final class PlayerEngine: @unchecked Sendable {
     private func startCrossfade(remaining: Double) {
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            let steps = 8
+            let steps = 6
             let stepDelay = max(0.1, remaining / Double(steps))
             for i in 1...steps {
                 guard self.isCrossfading, self.isPlaying else { break }
@@ -507,9 +509,11 @@ public final class PlayerEngine: @unchecked Sendable {
                 WKEmbedAudioEngine.shared.setVolume(self.volume * fraction)
                 try? await Task.sleep(nanoseconds: UInt64(stepDelay * 1_000_000_000))
             }
-            guard self.isCrossfading else { return }
+            guard self.isCrossfading else {
+                WKEmbedAudioEngine.shared.setVolume(self.volume)
+                return
+            }
             self.next()
-            try? await Task.sleep(nanoseconds: 500_000_000)
             WKEmbedAudioEngine.shared.setVolume(self.volume)
             self.isCrossfading = false
         }
@@ -526,7 +530,6 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
         self.isPlaying = isPlaying
         self.isLoading = isLoading
         self.userIntentPlaying = isPlaying
-        MusicHapticsManager.shared.handlePlaybackStateChange(isPlaying: isPlaying)
         updateLockScreen()
     }
     
@@ -536,12 +539,16 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
             self.duration = duration
         }
         
-        // Dynamic Crossfade Transition
+        // Dynamic Crossfade Transition (Only if upcoming track is available in queue)
         if isCrossfadeEnabled && duration > (crossfadeDuration + 5.0) && !isCrossfading {
-            let remaining = duration - currentTime
-            if remaining <= crossfadeDuration && remaining > 1.0 {
-                isCrossfading = true
-                startCrossfade(remaining: remaining)
+            if let current = currentSong,
+               let idx = queue.firstIndex(where: { $0.id == current.id }),
+               idx + 1 < queue.count {
+                let remaining = duration - currentTime
+                if remaining <= crossfadeDuration && remaining > 1.0 {
+                    isCrossfading = true
+                    startCrossfade(remaining: remaining)
+                }
             }
         }
         
@@ -552,6 +559,7 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
 
     public func embedAudioEngineDidEnd() {
         isCrossfading = false
+        WKEmbedAudioEngine.shared.setVolume(self.volume)
         handleSongDidEnd()
     }
     
@@ -559,8 +567,8 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
         self.isPlaying = false
         self.isLoading = false
         self.isCrossfading = false
+        WKEmbedAudioEngine.shared.setVolume(self.volume)
         self.errorMessage = error
-        MusicHapticsManager.shared.handlePlaybackStateChange(isPlaying: false)
         updateLockScreen()
         print("[PlayerEngine] WKEmbedAudioEngine error: \(error)")
     }

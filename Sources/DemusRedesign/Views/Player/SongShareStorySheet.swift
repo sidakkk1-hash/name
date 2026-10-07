@@ -56,7 +56,7 @@ public struct SongShareStorySheet: View {
                         Image(systemName: "music.note")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Color(red: 0.98, green: 0.15, blue: 0.28))
-                        Text("Demus Music")
+                        Text("Velora Music")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white.opacity(0.85))
                     }

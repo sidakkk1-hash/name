@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>Demus</string>
+    <string>Velora</string>
     <key>CFBundleExecutable</key>
     <string>DemusRedesign</string>
     <key>CFBundleIdentifier</key>
     <string>com.demusapp.redesign</string>
     <key>CFBundleName</key>
-    <string>DemusRedesign</string>
+    <string>Velora</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.37</string>
+    <string>2.0.38</string>
     <key>CFBundleVersion</key>
-    <string>37</string>
+    <string>38</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIBackgroundModes</key>
