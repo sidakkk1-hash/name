@@ -406,8 +406,9 @@ public struct RadioV: View {
         #endif
         
         Task {
-            let results = await YouTubeSearchService.shared.searchSongs(query: query)
-            if let first = results.first {
+            let resp = await SearchService.shared.searchAll(query: query)
+            let results = resp.songs
+            if !results.isEmpty {
                 await MainActor.run {
                     player.playAll(songs: results, startingAt: 0, shuffle: false)
                 }
