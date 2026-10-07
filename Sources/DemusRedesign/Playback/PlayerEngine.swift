@@ -24,6 +24,7 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
+    public let isUsingNativeEngine: Bool = false
     
     public var activeEngineName: String {
         "WebKit EmbedPlayer"
