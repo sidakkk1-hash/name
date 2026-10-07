@@ -45,8 +45,8 @@ jobs:
         run: |
           mkdir -p Payload
           cp -r ./build/Build/Products/Release-iphoneos/DemusRedesign.app Payload/
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.0.29" Payload/DemusRedesign.app/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 2.0.29" Payload/DemusRedesign.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 29" Payload/DemusRedesign.app/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 29" Payload/DemusRedesign.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 2.0.30" Payload/DemusRedesign.app/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 2.0.30" Payload/DemusRedesign.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 30" Payload/DemusRedesign.app/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 30" Payload/DemusRedesign.app/Info.plist
           zip -r DemusRedesign.ipa Payload
           echo "IPA Created Successfully!"
           ls -lh DemusRedesign.ipa

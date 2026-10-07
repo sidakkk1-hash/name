@@ -78,13 +78,14 @@ public struct DemusAppRootView: View {
     
     public var body: some View {
         ZStack {
-            MainTV()
             #if canImport(UIKit)
-            WKStreamExtractorView()
-                .frame(width: 1, height: 1)
-                .opacity(0.001)
+            WKEmbedAudioEngineView()
+                .frame(width: 320, height: 240)
                 .allowsHitTesting(false)
+                .zIndex(0)
             #endif
+            MainTV()
+                .zIndex(1)
         }
     }
 }

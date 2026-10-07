@@ -1,13 +1,14 @@
 import Foundation
 import Combine
 import SwiftUI
-@preconcurrency import AVFoundation
+#if canImport(AVFAudio)
+import AVFAudio
+#endif
 
 // MARK: - PlayerEngine
 /// Primary music player orchestrator for Demus.
 /// Coordinates queue, history, repeat/shuffle, and lock-screen/Control Center integration.
-/// Playback is executed 100% natively via NativeAudioEngine (AVPlayer),
-/// which extracts stream URLs on-demand using the headless WKStreamExtractor.
+/// Playback is executed natively via the authentic Demus-style WebKit Embed Engine (WKEmbedAudioEngine).
 @Observable
 public final class PlayerEngine: @unchecked Sendable {
     public static let shared = PlayerEngine()
@@ -23,19 +24,9 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
-    public let isUsingNativeEngine: Bool = true
-    public private(set) var nativePlaybackConfirmed: Bool = true
-    public private(set) var lastFailureReason: String?
     
     public var activeEngineName: String {
-        "Native AVPlayer"
-    }
-    
-    public var diagnosticSummary: String {
-        if let reason = lastFailureReason {
-            return "Native AVPlayer (Error: \(reason))"
-        }
-        return "Native AVPlayer"
+        "WebKit EmbedPlayer"
     }
     
     public var audioSessionCategoryString: String {
@@ -63,7 +54,7 @@ public final class PlayerEngine: @unchecked Sendable {
         didSet {
             let v = volume
             Task { @MainActor in
-                NativeAudioEngine.shared.setVolume(v)
+                WKEmbedAudioEngine.shared.setVolume(v)
             }
         }
     }
@@ -81,7 +72,7 @@ public final class PlayerEngine: @unchecked Sendable {
         setupAudioObservers()
         restoreLastSession()
         Task { @MainActor in
-            NativeAudioEngine.shared.delegate = self
+            WKEmbedAudioEngine.shared.delegate = self
         }
         NowPlayingManager.shared.setupRemoteCommands(player: self)
     }
@@ -132,7 +123,7 @@ public final class PlayerEngine: @unchecked Sendable {
             
             if type == .began {
                 Task { @MainActor in
-                    NativeAudioEngine.shared.pause()
+                    WKEmbedAudioEngine.shared.pause()
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
@@ -141,7 +132,7 @@ public final class PlayerEngine: @unchecked Sendable {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         Task { @MainActor in
-                            NativeAudioEngine.shared.play()
+                            WKEmbedAudioEngine.shared.play()
                         }
                         self.isPlaying = true
                         self.updateLockScreen()
@@ -163,7 +154,7 @@ public final class PlayerEngine: @unchecked Sendable {
             // If headphones unplugged or Bluetooth disconnected, pause playback
             if reason == .oldDeviceUnavailable {
                 Task { @MainActor in
-                    NativeAudioEngine.shared.pause()
+                    WKEmbedAudioEngine.shared.pause()
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
@@ -183,7 +174,7 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
-    // MARK: - Play Song with HD Artwork and Native AVPlayer
+    // MARK: - Play Song via WKEmbedAudioEngine
     public func play(song: Song) {
         // Upgrade artwork to HD
         let hdArtwork = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id)
@@ -193,7 +184,7 @@ public final class PlayerEngine: @unchecked Sendable {
         if currentSong?.id == upgradedSong.id {
             if !isPlaying {
                 Task { @MainActor in
-                    NativeAudioEngine.shared.play()
+                    WKEmbedAudioEngine.shared.play()
                 }
                 isPlaying = true
                 updateLockScreen()
@@ -211,7 +202,6 @@ public final class PlayerEngine: @unchecked Sendable {
         self.lastUserToggleTime = now
         self.lastActionTime = now
         self.errorMessage = nil
-        self.lastFailureReason = nil
         
         // Add to persistent library history
         LibraryRepository.shared.addHistory(upgradedSong)
@@ -227,21 +217,21 @@ public final class PlayerEngine: @unchecked Sendable {
         let currentVideoId = upgradedSong.id
         
         print("""
-        [PlayerEngine] Starting Demus-style playback:
+        [PlayerEngine] Playing via WKEmbedAudioEngine:
           Title: \(songToPlay.title)
           VideoID: \(currentVideoId)
-          Engine: NativeAudioEngine (AVPlayer)
+          Engine: WebKit EmbedPlayer
         """)
         
         Task { @MainActor in
-            let success = await NativeAudioEngine.shared.loadAndPlay(song: songToPlay)
-            if !success {
-                self.isLoading = false
-                self.isPlaying = false
-                self.errorMessage = NativeAudioEngine.shared.lastFailureReason ?? "Stream resolution or playback failed"
-                self.lastFailureReason = self.errorMessage
-                self.updateLockScreen()
-            }
+            WKEmbedAudioEngine.shared.loadAndPlay(
+                videoId: currentVideoId,
+                title: songToPlay.title,
+                artist: songToPlay.artistName,
+                album: songToPlay.albumName ?? "",
+                artworkUrl: songToPlay.artworkURL?.absoluteString ?? "",
+                duration: upgradedSong.duration
+            )
         }
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music
@@ -301,7 +291,7 @@ public final class PlayerEngine: @unchecked Sendable {
     
     public func togglePlay() {
         let now = Date().timeIntervalSince1970
-        guard now - lastActionTime > 0.25 else { return } // 250ms rapid-tap debounce
+        guard now - lastActionTime > 0.25 else { return } // 250ms debounce
         lastActionTime = now
         lastUserToggleTime = now
         
@@ -316,7 +306,7 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isPlaying = false
             self.isLoading = false
             Task { @MainActor in
-                NativeAudioEngine.shared.pause()
+                WKEmbedAudioEngine.shared.pause()
             }
         } else {
             userIntentPlaying = true
@@ -324,7 +314,7 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isLoading = true
             if currentSong != nil {
                 Task { @MainActor in
-                    NativeAudioEngine.shared.play()
+                    WKEmbedAudioEngine.shared.play()
                 }
             } else if let first = queue.first {
                 play(song: first)
@@ -356,7 +346,7 @@ public final class PlayerEngine: @unchecked Sendable {
         } else {
             isPlaying = false
             Task { @MainActor in
-                NativeAudioEngine.shared.pause()
+                WKEmbedAudioEngine.shared.pause()
             }
             updateLockScreen()
         }
@@ -383,7 +373,7 @@ public final class PlayerEngine: @unchecked Sendable {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
         Task { @MainActor in
-            NativeAudioEngine.shared.seek(to: clamped)
+            WKEmbedAudioEngine.shared.seek(to: clamped)
         }
         updateLockScreen()
     }
@@ -469,7 +459,7 @@ public final class PlayerEngine: @unchecked Sendable {
         if isRepeat {
             seek(to: 0)
             Task { @MainActor in
-                NativeAudioEngine.shared.play()
+                WKEmbedAudioEngine.shared.play()
             }
         } else {
             next()
@@ -477,20 +467,20 @@ public final class PlayerEngine: @unchecked Sendable {
     }
 }
 
-// MARK: - NativeAudioEngineDelegate
-extension PlayerEngine: NativeAudioEngineDelegate {
-    public func nativeAudioEngineDidReady() {
-        print("[PlayerEngine] NativeAudioEngine is readyToPlay")
+// MARK: - WKEmbedAudioEngineDelegate
+extension PlayerEngine: WKEmbedAudioEngineDelegate {
+    public func embedAudioEngineDidReady() {
+        print("[PlayerEngine] WKEmbedAudioEngine is ready")
     }
     
-    public func nativeAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
+    public func embedAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
         self.isPlaying = isPlaying
         self.isLoading = isLoading
         self.userIntentPlaying = isPlaying
         updateLockScreen()
     }
     
-    public func nativeAudioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
+    public func embedAudioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
         self.currentTime = currentTime
         if duration > 0 {
             self.duration = duration
@@ -500,16 +490,23 @@ extension PlayerEngine: NativeAudioEngineDelegate {
         }
     }
     
-    public func nativeAudioEngineDidEnd() {
+    public func embedAudioEngineDidEnd() {
         handleSongDidEnd()
     }
     
-    public func nativeAudioEngineDidFail(error: String) {
+    public func embedAudioEngineDidFail(error: String) {
         self.isPlaying = false
         self.isLoading = false
-        self.lastFailureReason = error
         self.errorMessage = error
         updateLockScreen()
-        print("[PlayerEngine] NativeAudioEngine error: \(error)")
+        print("[PlayerEngine] WKEmbedAudioEngine error: \(error)")
+    }
+    
+    public func embedAudioEngineDidRequestNext() {
+        next()
+    }
+    
+    public func embedAudioEngineDidRequestPrev() {
+        prev()
     }
 }
