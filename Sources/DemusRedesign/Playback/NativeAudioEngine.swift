@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -8,17 +9,31 @@ import UIKit
 // MARK: - NativeAudioEngineDelegate
 public protocol NativeAudioEngineDelegate: AnyObject, Sendable {
     func nativeAudioEngineDidReady()
-    func nativeAudioEngineDidConfirmPlayback()
     func nativeAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool)
     func nativeAudioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval)
     func nativeAudioEngineDidEnd()
     func nativeAudioEngineDidFail(error: String)
 }
 
+// MARK: - NativePlayerDiagnostics
+public struct NativePlayerDiagnostics: Sendable {
+    public var itemStatus: String = "idle"
+    public var itemError: String = "None"
+    public var timeControlStatus: String = "paused"
+    public var waitingReason: String = "None"
+    public var rate: Float = 0.0
+    public var currentTime: Double = 0.0
+    public var duration: Double = 0.0
+    public var playbackStalled: Bool = false
+    public var appState: String = "active"
+    public var lastStreamHost: String = "None"
+}
+
 // MARK: - NativeAudioEngine
-/// App-lifetime Native AVPlayer audio engine.
-/// Created once, runs alongside WKAudioEngine fallback, verifying actual advancing playback
-/// before declaring Native AVPlayer active.
+/// The sole playback engine for Demus: 100% native AVPlayer audio playback.
+/// Resolves stream URLs via WKStreamExtractor, then hands them to AVPlayerItem.
+/// Plays continuously in background & lock screen without WebKit audio hacks.
+@Observable
 @MainActor
 public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     public static let shared = NativeAudioEngine()
@@ -29,398 +44,331 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
     public private(set) var playerItem: AVPlayerItem?
     
     public private(set) var isReady: Bool = false
-    public private(set) var nativePlaybackConfirmed: Bool = false
+    public private(set) var isPlaying: Bool = false
+    public private(set) var isLoading: Bool = false
     public private(set) var lastFailureReason: String?
     public private(set) var currentSong: Song?
     
-    public struct AssetDiagnosticInfo: Sendable {
-        public let isPlayable: Bool
-        public let durationSeconds: Double
-        public let tracksCount: Int
-        public let trackMediaTypes: [String]
-        public let loadError: String?
-        
-        public init(
-            isPlayable: Bool,
-            durationSeconds: Double,
-            tracksCount: Int,
-            trackMediaTypes: [String],
-            loadError: String? = nil
-        ) {
-            self.isPlayable = isPlayable
-            self.durationSeconds = durationSeconds
-            self.tracksCount = tracksCount
-            self.trackMediaTypes = trackMediaTypes
-            self.loadError = loadError
-        }
-    }
-    
-    public struct ErrorDiagnosticInfo: Sendable {
-        public let domain: String
-        public let code: Int
-        public let localizedDescription: String
-        public let underlyingError: String
-        public let errorLogEvents: String
-        public let accessLogEvents: String
-    }
-    
-    public private(set) var latestAssetDiagnostic: AssetDiagnosticInfo?
-    public private(set) var latestErrorDiagnostic: ErrorDiagnosticInfo?
+    public var diagnostics = NativePlayerDiagnostics()
     
     private var timeObserverToken: Any?
     private var statusObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
-    private var verificationTask: Task<Void, Never>?
+    private var waitingReasonObservation: NSKeyValueObservation?
+    private var rateObservation: NSKeyValueObservation?
+    private var stalledObserver: (any NSObjectProtocol)?
+    private var endObserver: (any NSObjectProtocol)?
+    private var appStateObservers: [any NSObjectProtocol] = []
     
     override public init() {
         let p = AVPlayer()
         p.automaticallyWaitsToMinimizeStalling = true
         self.player = p
         super.init()
+        
+        setupAudioSession()
+        setupPlayerObservations()
+        setupAppStateObservations()
+    }
+    
+    // MARK: - Audio Session
+    private func setupAudioSession() {
+        #if canImport(AVFAudio)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetoothA2DP]
+            )
+            try session.setActive(true)
+            print("[NativeAudioEngine] AVAudioSession configured: .playback, active=true")
+        } catch {
+            print("[NativeAudioEngine] AVAudioSession setup error:", error)
+        }
+        #endif
     }
     
     // MARK: - Load and Play
     public func loadAndPlay(song: Song) async -> Bool {
         self.currentSong = song
         self.isReady = false
-        self.nativePlaybackConfirmed = false
+        self.isLoading = true
         self.lastFailureReason = nil
-        self.latestAssetDiagnostic = nil
-        self.latestErrorDiagnostic = nil
+        self.diagnostics.playbackStalled = false
+        self.diagnostics.itemError = "None"
+        self.diagnostics.itemStatus = "extracting"
         
         let videoId = song.id
-        print("[NativeAudioEngine] Resolving stream for videoId: \(videoId)")
+        print("[NativeAudioEngine] Extracting stream for videoId: \(videoId)")
         
-        let stream: StreamResolutionService.ResolvedStream
+        // 1. Resolve stream via WKStreamExtractor
+        let streamURL: URL
         do {
-            stream = try await StreamResolutionService.shared.resolveStream(for: song)
-        } catch let err as StreamResolutionError {
-            let reason = err.errorDescription ?? "Native failure: StreamResolutionFailed"
-            self.lastFailureReason = reason
-            print("[NativeAudioEngine] Stream resolution failed: \(reason)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
-            return false
+            streamURL = try await WKStreamExtractor.shared.extractStreamURL(for: videoId)
         } catch {
-            let reason = "Native failure: StreamResolutionFailed"
-            self.lastFailureReason = reason
-            print("[NativeAudioEngine] Stream resolution failed: \(error)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
+            let errMsg = error.localizedDescription
+            self.lastFailureReason = errMsg
+            self.diagnostics.itemStatus = "extraction_failed"
+            self.diagnostics.itemError = errMsg
+            self.isLoading = false
+            self.isPlaying = false
+            print("[NativeAudioEngine] Stream extraction failed: \(errMsg)")
+            delegate?.nativeAudioEngineDidFail(error: errMsg)
             return false
         }
         
+        guard let host = streamURL.host else {
+            let errMsg = "Extracted URL missing host"
+            self.lastFailureReason = errMsg
+            self.diagnostics.itemStatus = "invalid_url"
+            self.diagnostics.itemError = errMsg
+            self.isLoading = false
+            delegate?.nativeAudioEngineDidFail(error: errMsg)
+            return false
+        }
+        
+        self.diagnostics.lastStreamHost = host
+        print("[NativeAudioEngine] Loading AVPlayerItem with host: \(host)")
+        
+        // 2. Setup native AVPlayerItem
         cleanupCurrentItem()
         
-        // Clean public AVURLAsset API without private HTTP headers
-        let asset = AVURLAsset(url: stream.url)
-        
-        // Asynchronously load public AVFoundation asset properties
-        var isPlayable = false
-        var assetDurationSeconds: Double = 0
-        var trackCount = 0
-        var trackTypes: [String] = []
-        
-        var loadError: String?
-        do {
-            isPlayable = try await asset.load(.isPlayable)
-            let dur = try await asset.load(.duration)
-            assetDurationSeconds = dur.seconds.isFinite ? dur.seconds : 0
-            let tracks = try await asset.load(.tracks)
-            trackCount = tracks.count
-            trackTypes = tracks.map { $0.mediaType.rawValue }
-        } catch {
-            print("[NativeAudioEngine] Public asset.load failed: \(error)")
-            loadError = error.localizedDescription
-            self.lastFailureReason = "Asset load failed: \(error.localizedDescription)"
-        }
-        
-        self.latestAssetDiagnostic = AssetDiagnosticInfo(
-            isPlayable: isPlayable,
-            durationSeconds: assetDurationSeconds,
-            tracksCount: trackCount,
-            trackMediaTypes: trackTypes,
-            loadError: loadError
-        )
-        
-        print("""
-        [NativeAudioEngine] Asset Diagnostic:
-          isPlayable: \(isPlayable)
-          duration: \(assetDurationSeconds)s
-          tracks: \(trackCount) (\(trackTypes.joined(separator: ", ")))
-          loadError: \(loadError ?? "none")
-        """)
-        
-        let item = AVPlayerItem(asset: asset)
+        let item = AVPlayerItem(url: streamURL)
+        item.preferredForwardBufferDuration = 15.0
         self.playerItem = item
+        setupItemObservations(for: item)
         
-        setupObservers(for: item)
         player.replaceCurrentItem(with: item)
+        player.play()
         
         return true
     }
     
-    // MARK: - Observers
-    private func setupObservers(for item: AVPlayerItem) {
-        // Observe PlayerItem Status
-        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] observedItem, _ in
+    // MARK: - Playback Controls
+    public func play() {
+        setupAudioSession()
+        player.play()
+    }
+    
+    public func pause() {
+        player.pause()
+    }
+    
+    public func togglePlay() {
+        if player.timeControlStatus == .playing {
+            pause()
+        } else {
+            play()
+        }
+    }
+    
+    public func seek(to seconds: TimeInterval) {
+        let target = CMTime(seconds: seconds, preferredTimescale: 600)
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+    
+    public func setVolume(_ volume: Double) {
+        player.volume = Float(volume)
+    }
+    
+    public var timeControlStatusString: String {
+        diagnostics.timeControlStatus
+    }
+    
+    public var itemStatusString: String {
+        diagnostics.itemStatus
+    }
+    
+    public func cleanupPlayer() {
+        cleanupCurrentItem()
+        player.replaceCurrentItem(with: nil)
+        self.isReady = false
+        self.isPlaying = false
+        self.isLoading = false
+        self.diagnostics.itemStatus = "idle"
+    }
+    
+    // MARK: - Item Observations
+    private func setupItemObservations(for item: AVPlayerItem) {
+        // Observe AVPlayerItem.status
+        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] it, _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                print("""
-                [NativeAudioEngine] AVPlayerItem.status: \(observedItem.status.rawValue)
-                [NativeAudioEngine] AVPlayerItem.error: \(String(describing: observedItem.error))
-                """)
-                
-                switch observedItem.status {
+                switch it.status {
                 case .readyToPlay:
-                    self.onItemReadyToPlay()
+                    self.isReady = true
+                    self.diagnostics.itemStatus = "readyToPlay"
+                    self.diagnostics.itemError = "None"
+                    let dur = it.duration.seconds
+                    if dur.isFinite && dur > 0 {
+                        self.diagnostics.duration = dur
+                    }
+                    print("[NativeAudioEngine] AVPlayerItem is readyToPlay")
+                    self.delegate?.nativeAudioEngineDidReady()
                     
                 case .failed:
                     self.isReady = false
-                    self.nativePlaybackConfirmed = false
-                    
-                    let nsErr = observedItem.error as NSError?
-                    let domain = nsErr?.domain ?? "AVFoundation"
-                    let errCode = nsErr?.code ?? 0
-                    let errDesc = observedItem.error?.localizedDescription ?? "unknown error"
-                    let underlying = nsErr?.userInfo[NSUnderlyingErrorKey] as? NSError
-                    let underlyingStr = underlying != nil ? " | Under: [\(underlying!.domain):\(underlying!.code)] \(underlying!.localizedDescription)" : ""
-                    
-                    var errorLogSummary = "none"
-                    if let events = observedItem.errorLog()?.events, !events.isEmpty {
-                        errorLogSummary = events.map { "[\($0.errorDomain):\($0.errorStatusCode)] \($0.errorComment ?? "")" }.joined(separator: "; ")
-                    }
-                    
-                    var accessLogSummary = "none"
-                    if let events = observedItem.accessLog()?.events, !events.isEmpty {
-                        accessLogSummary = events.map { "bytes:\($0.numberOfBytesTransferred) srv:\($0.serverAddress ?? "")" }.joined(separator: "; ")
-                    }
-                    
-                    self.latestErrorDiagnostic = ErrorDiagnosticInfo(
-                        domain: domain,
-                        code: errCode,
-                        localizedDescription: errDesc,
-                        underlyingError: underlyingStr,
-                        errorLogEvents: errorLogSummary,
-                        accessLogEvents: accessLogSummary
-                    )
-                    
-                    let reason = "Native failure: [\(domain):\(errCode)] \(errDesc)\(underlyingStr)"
-                    self.lastFailureReason = reason
-                    print("""
-                    [NativeAudioEngine] Item failed:
-                      Reason: \(reason)
-                      ErrorLog: \(errorLogSummary)
-                      AccessLog: \(accessLogSummary)
-                    """)
-                    self.delegate?.nativeAudioEngineDidFail(error: reason)
+                    self.isLoading = false
+                    self.isPlaying = false
+                    let errStr = it.error?.localizedDescription ?? "AVPlayerItem failed"
+                    self.lastFailureReason = errStr
+                    self.diagnostics.itemStatus = "failed"
+                    self.diagnostics.itemError = errStr
+                    print("[NativeAudioEngine] AVPlayerItem failed: \(errStr)")
+                    self.delegate?.nativeAudioEngineDidFail(error: errStr)
                     
                 case .unknown:
-                    break
+                    self.diagnostics.itemStatus = "unknown"
+                    
                 @unknown default:
                     break
                 }
             }
         }
         
-        // Observe TimeControlStatus
-        timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
+        // Observe playback stalled notification
+        stalledObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                let isPlaying = observedPlayer.timeControlStatus == .playing
-                let isLoading = observedPlayer.timeControlStatus == .waitingToPlayAtSpecifiedRate
-                self.delegate?.nativeAudioEngineDidChangeState(isPlaying: isPlaying, isLoading: isLoading)
+                self.diagnostics.playbackStalled = true
+                print("[NativeAudioEngine] Playback stalled notification received")
             }
         }
         
-        // Periodic Time Observer (every 0.5s)
-        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+        // Observe item did play to end
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self, let currentItem = self.playerItem else { return }
-                let current = CMTimeGetSeconds(time)
-                let dur = CMTimeGetSeconds(currentItem.duration)
-                let validDur = dur.isFinite && dur > 0 ? dur : (self.currentSong?.duration ?? 180)
-                if current.isFinite {
-                    self.delegate?.nativeAudioEngineDidUpdateTime(currentTime: current, duration: validDur)
+                guard let self = self else { return }
+                print("[NativeAudioEngine] Song finished playing")
+                self.delegate?.nativeAudioEngineDidEnd()
+            }
+        }
+    }
+    
+    // MARK: - Player Observations
+    private func setupPlayerObservations() {
+        // 1. timeControlStatus
+        timeControlObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] p, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                switch p.timeControlStatus {
+                case .playing:
+                    self.isPlaying = true
+                    self.isLoading = false
+                    self.diagnostics.timeControlStatus = "playing"
+                    self.delegate?.nativeAudioEngineDidChangeState(isPlaying: true, isLoading: false)
+                case .paused:
+                    self.isPlaying = false
+                    self.isLoading = false
+                    self.diagnostics.timeControlStatus = "paused"
+                    self.delegate?.nativeAudioEngineDidChangeState(isPlaying: false, isLoading: false)
+                case .waitingToPlayAtSpecifiedRate:
+                    self.isPlaying = false
+                    self.isLoading = true
+                    self.diagnostics.timeControlStatus = "waitingToPlay"
+                    self.delegate?.nativeAudioEngineDidChangeState(isPlaying: false, isLoading: true)
+                @unknown default:
+                    break
                 }
             }
         }
         
-        // End of track notification
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(playerItemDidReachEnd),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: item
-        )
-    }
-    
-    private func onItemReadyToPlay() {
-        guard let item = playerItem, item.status == .readyToPlay else { return }
-        self.isReady = true
-        delegate?.nativeAudioEngineDidReady()
+        // 2. reasonForWaitingToPlay
+        waitingReasonObservation = player.observe(\.reasonForWaitingToPlay, options: [.initial, .new]) { [weak self] p, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if let reason = p.reasonForWaitingToPlay {
+                    self.diagnostics.waitingReason = reason.rawValue
+                } else {
+                    self.diagnostics.waitingReason = "None"
+                }
+            }
+        }
         
-        print("""
-        [NativeAudioEngine] readyToPlay reached!
-        [NativeAudioEngine] player.timeControlStatus: \(player.timeControlStatus.rawValue)
-        [NativeAudioEngine] player.reasonForWaitingToPlay: \(String(describing: player.reasonForWaitingToPlay))
-        """)
+        // 3. rate
+        rateObservation = player.observe(\.rate, options: [.initial, .new]) { [weak self] p, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.diagnostics.rate = p.rate
+            }
+        }
         
-        player.play()
-        
-        // Begin strict playback verification
-        verificationTask?.cancel()
-        verificationTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            await self.verifyPlaybackAdvancing()
+        // 4. Periodic time updates (every 250ms)
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let cur = time.seconds
+                guard cur.isFinite else { return }
+                self.diagnostics.currentTime = cur
+                
+                var dur: Double = 0
+                if let it = self.playerItem {
+                    let d = it.duration.seconds
+                    if d.isFinite && d > 0 {
+                        dur = d
+                        self.diagnostics.duration = d
+                    }
+                }
+                
+                self.delegate?.nativeAudioEngineDidUpdateTime(currentTime: cur, duration: dur)
+            }
         }
     }
     
-    // MARK: - Native Playback Verification (3-second continuous advance check)
-    private func verifyPlaybackAdvancing() async {
-        // 1. Wait for player to enter playing state (up to 7.0 seconds)
-        let startWait = Date()
-        while player.timeControlStatus != .playing && Date().timeIntervalSince(startWait) < 7.0 {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            if Task.isCancelled { return }
+    // MARK: - App State Observations
+    private func setupAppStateObservations() {
+        #if canImport(UIKit)
+        let activeObs = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.diagnostics.appState = "active"
+            }
         }
         
-        guard let currentItem = playerItem, currentItem.status == .readyToPlay else {
-            let nsErr = playerItem?.error as NSError?
-            let errCode = nsErr?.code ?? 0
-            let errDesc = playerItem?.error?.localizedDescription ?? "item not ready"
-            let reason = "Native failure: AVPlayerItemFailed [\(errCode)] \(errDesc)"
-            self.lastFailureReason = reason
-            self.nativePlaybackConfirmed = false
-            print("[NativeAudioEngine] Verification failed: \(reason)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
-            return
+        let bgObs = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.diagnostics.appState = "background"
+            }
         }
         
-        if player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-            let waitReason = player.reasonForWaitingToPlay?.rawValue ?? "stalling"
-            let reason = "Native failure: WaitingToMinimizeStalls (\(waitReason))"
-            self.lastFailureReason = reason
-            self.nativePlaybackConfirmed = false
-            print("[NativeAudioEngine] Verification failed: \(reason)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
-            return
-        }
-        
-        guard player.timeControlStatus == .playing && player.rate > 0 else {
-            let reason = "Native failure: ReadyButNotPlaying"
-            self.lastFailureReason = reason
-            self.nativePlaybackConfirmed = false
-            print("[NativeAudioEngine] Verification failed: \(reason)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
-            return
-        }
-        
-        // 2. Measure currentTime advance continuously for at least 3 seconds
-        let time1 = player.currentTime().seconds
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
-        if Task.isCancelled { return }
-        let time2 = player.currentTime().seconds
-        let advance = time2 - time1
-        
-        print("""
-        [NativeAudioEngine] 3-Second Verification:
-          time1: \(time1)
-          time2: \(time2)
-          advance: \(advance)s
-          rate: \(player.rate)
-          timeControlStatus: \(player.timeControlStatus.rawValue)
-        """)
-        
-        if time2 > time1 && advance >= 2.5 && player.rate > 0 && player.timeControlStatus == .playing {
-            // Strict verification succeeded:
-            // - stream URL resolved
-            // - AVPlayerItem.status == .readyToPlay
-            // - AVPlayer.timeControlStatus == .playing
-            // - player.rate > 0
-            // - currentTime advances continuously for at least 3 seconds
-            self.nativePlaybackConfirmed = true
-            self.lastFailureReason = nil
-            print("[NativeAudioEngine] Strict verification SUCCESSFUL! Confirmed Native AVPlayer active.")
-            delegate?.nativeAudioEngineDidConfirmPlayback()
-            delegate?.nativeAudioEngineDidChangeState(isPlaying: true, isLoading: false)
-        } else {
-            let reason = "Native failure: StalledBefore3s (advanced: \(String(format: "%.2f", advance))s)"
-            self.lastFailureReason = reason
-            self.nativePlaybackConfirmed = false
-            print("[NativeAudioEngine] Verification failed: \(reason)")
-            delegate?.nativeAudioEngineDidFail(error: reason)
-        }
+        appStateObservers = [activeObs, bgObs]
+        #endif
     }
     
-    @objc private func playerItemDidReachEnd(notification: Notification) {
-        print("[NativeAudioEngine] Track finished playback.")
-        delegate?.nativeAudioEngineDidEnd()
-    }
-    
-    // MARK: - Playback Controls
-    public func play() {
-        player.play()
-    }
-    
-    public func pause() {
-        print("[NativeAudioEngine] pause() CALLED! Callstack:")
-        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
-        player.pause()
-    }
-    
-    public func seek(to seconds: TimeInterval) {
-        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-    }
-    
-    public func setVolume(_ volume: Double) {
-        player.volume = Float(max(0, min(1, volume)))
-    }
-    
-    public func cleanupCurrentItem() {
-        print("[NativeAudioEngine] cleanupCurrentItem() / cleanupPlayer() CALLED! Callstack:")
-        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
-        verificationTask?.cancel()
-        verificationTask = nil
-        
-        if let token = timeObserverToken {
-            player.removeTimeObserver(token)
-            timeObserverToken = nil
-        }
+    private func cleanupCurrentItem() {
         statusObservation?.invalidate()
         statusObservation = nil
-        timeControlObservation?.invalidate()
-        timeControlObservation = nil
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        
-        player.pause()
-        player.replaceCurrentItem(with: nil)
-        playerItem = nil
-        isReady = false
-        nativePlaybackConfirmed = false
-    }
-    
-    public func cleanupPlayer() {
-        cleanupCurrentItem()
-    }
-    
-    // MARK: - Diagnostics Helpers
-    public var itemStatusString: String {
-        guard let item = playerItem else { return "none" }
-        switch item.status {
-        case .readyToPlay: return "readyToPlay"
-        case .failed: return "failed"
-        case .unknown: return "unknown"
-        @unknown default: return "unknown"
+        if let s = stalledObserver {
+            NotificationCenter.default.removeObserver(s)
+            stalledObserver = nil
         }
+        if let e = endObserver {
+            NotificationCenter.default.removeObserver(e)
+            endObserver = nil
+        }
+        playerItem = nil
     }
     
-    public var timeControlStatusString: String {
-        switch player.timeControlStatus {
-        case .playing: return "playing"
-        case .paused: return "paused"
-        case .waitingToPlayAtSpecifiedRate: return "waiting"
-        @unknown default: return "unknown"
+    deinit {
+        if let token = timeObserverToken {
+            player.removeTimeObserver(token)
         }
     }
 }

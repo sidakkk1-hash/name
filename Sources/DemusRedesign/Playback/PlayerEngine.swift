@@ -4,9 +4,10 @@ import SwiftUI
 @preconcurrency import AVFoundation
 
 // MARK: - PlayerEngine
-/// Real playback engine powered by Demus's WebKit Embed Architecture (WKAudioEngine),
-/// providing 100% reliable background streaming, lock-screen controls, dynamic scrubbing,
-/// and queue orchestration without googlevideo 403 Forbidden interruptions.
+/// Primary music player orchestrator for Demus.
+/// Coordinates queue, history, repeat/shuffle, and lock-screen/Control Center integration.
+/// Playback is executed 100% natively via NativeAudioEngine (AVPlayer),
+/// which extracts stream URLs on-demand using the headless WKStreamExtractor.
 @Observable
 public final class PlayerEngine: @unchecked Sendable {
     public static let shared = PlayerEngine()
@@ -22,73 +23,21 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var errorMessage: String?
-    public private(set) var isUsingNativeEngine: Bool = false
-    public private(set) var nativePlaybackConfirmed: Bool = false
+    public let isUsingNativeEngine: Bool = true
+    public private(set) var nativePlaybackConfirmed: Bool = true
     public private(set) var lastFailureReason: String?
     
-    public func playFromWebMediaSession() {
-        guard !isPlaying else { return }
-        self.isPlaying = true
-        self.userIntentPlaying = true
-        updateLockScreen()
-    }
-    
-    public func pauseFromWebMediaSession() {
-        guard isPlaying else { return }
-        self.isPlaying = false
-        self.userIntentPlaying = false
-        updateLockScreen()
-    }
-    
-    public var forceNativeOnly: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: "demus_force_native_only") == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: "demus_force_native_only")
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "demus_force_native_only")
-            if newValue {
-                Task { @MainActor in
-                    WKAudioEngine.shared.pause()
-                }
-            }
-        }
-    }
-    
-    public struct DiagnosticSnapshot: Identifiable, Sendable {
-        public let id = UUID()
-        public let label: String
-        public let timestamp: Date
-        public let playerIdentifier: String
-        public let itemIdentifier: String
-        public let currentTime: Double
-        public let rate: Float
-        public let timeControlStatus: String
-        public let itemStatus: String
-        public let audioSessionCategory: String
-        public let lastInterruption: String
-        public let lastRouteChange: String
-        public let lastNativeError: String
-    }
-    
-    public private(set) var diagnosticSnapshots: [DiagnosticSnapshot] = []
-    public private(set) var lastInterruptionEvent: String = "None"
-    public private(set) var lastRouteChangeEvent: String = "None"
-    
     public var activeEngineName: String {
-        isUsingNativeEngine ? "Native AVPlayer" : "WKAudioEngine"
+        "Native AVPlayer"
     }
+    
     public var diagnosticSummary: String {
-        if isUsingNativeEngine && nativePlaybackConfirmed {
-            return "Native AVPlayer"
-        } else if let reason = lastFailureReason {
-            return reason
-        } else {
-            return "WKAudioEngine"
+        if let reason = lastFailureReason {
+            return "Native AVPlayer (Error: \(reason))"
         }
+        return "Native AVPlayer"
     }
+    
     public var audioSessionCategoryString: String {
         #if canImport(AVFAudio)
         return AVAudioSession.sharedInstance().category.rawValue
@@ -96,6 +45,7 @@ public final class PlayerEngine: @unchecked Sendable {
         return "unknown"
         #endif
     }
+    
     public var appStateString: String {
         #if canImport(UIKit)
         switch UIApplication.shared.applicationState {
@@ -108,11 +58,11 @@ public final class PlayerEngine: @unchecked Sendable {
         return "unknown"
         #endif
     }
+    
     public var volume: Double = 1.0 {
         didSet {
             let v = volume
             Task { @MainActor in
-                WKAudioEngine.shared.setVolume(v)
                 NativeAudioEngine.shared.setVolume(v)
             }
         }
@@ -125,15 +75,12 @@ public final class PlayerEngine: @unchecked Sendable {
     
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
-    private var backgroundObserver: NSObjectProtocol?
-    private var willResignActiveObserver: NSObjectProtocol?
     
     public init() {
         configureAudioSession()
         setupAudioObservers()
         restoreLastSession()
         Task { @MainActor in
-            WKAudioEngine.shared.delegate = self
             NativeAudioEngine.shared.delegate = self
         }
         NowPlayingManager.shared.setupRemoteCommands(player: self)
@@ -152,12 +99,6 @@ public final class PlayerEngine: @unchecked Sendable {
         }
     }
     
-    private func persistCurrentSession(song: Song) {
-        if let data = try? JSONEncoder().encode(song) {
-            UserDefaults.standard.set(data, forKey: "demus_last_song")
-        }
-    }
-    
     // MARK: - Audio Session Configuration
     private func configureAudioSession() {
         #if canImport(AVFAudio)
@@ -169,6 +110,7 @@ public final class PlayerEngine: @unchecked Sendable {
                 options: [.allowAirPlay, .allowBluetoothA2DP]
             )
             try session.setActive(true)
+            print("[PlayerEngine] AVAudioSession configured: .playback, active=true")
         } catch {
             print("[PlayerEngine] Failed to configure AVAudioSession:", error)
         }
@@ -188,15 +130,9 @@ public final class PlayerEngine: @unchecked Sendable {
                   let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             
-            self.lastInterruptionEvent = type == .began ? "Began" : "Ended"
-            
             if type == .began {
                 Task { @MainActor in
-                    if self.isUsingNativeEngine {
-                        NativeAudioEngine.shared.pause()
-                    } else {
-                        WKAudioEngine.shared.pause()
-                    }
+                    NativeAudioEngine.shared.pause()
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
@@ -205,11 +141,7 @@ public final class PlayerEngine: @unchecked Sendable {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         Task { @MainActor in
-                            if self.isUsingNativeEngine {
-                                NativeAudioEngine.shared.play()
-                            } else {
-                                WKAudioEngine.shared.play()
-                            }
+                            NativeAudioEngine.shared.play()
                         }
                         self.isPlaying = true
                         self.updateLockScreen()
@@ -228,99 +160,16 @@ public final class PlayerEngine: @unchecked Sendable {
                   let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
                   let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
             
-            self.lastRouteChangeEvent = "Reason: \(reasonValue)"
-            
             // If headphones unplugged or Bluetooth disconnected, pause playback
             if reason == .oldDeviceUnavailable {
                 Task { @MainActor in
-                    if self.isUsingNativeEngine {
-                        NativeAudioEngine.shared.pause()
-                    } else {
-                        WKAudioEngine.shared.pause()
-                    }
+                    NativeAudioEngine.shared.pause()
                 }
                 self.isPlaying = false
                 self.updateLockScreen()
             }
         }
-        
-        setupBackgroundDiagnosticObserver()
         #endif
-    }
-    
-    private func setupBackgroundDiagnosticObserver() {
-        #if canImport(UIKit)
-        willResignActiveObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.recordSnapshot(label: "BEFORE BACKGROUND")
-        }
-        
-        backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Background callbacks must LOG ONLY. Do not call play, pause, or touch player.
-            self?.recordSnapshot(label: "BACKGROUND 0s")
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                self?.recordSnapshot(label: "BACKGROUND +1s")
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                self?.recordSnapshot(label: "BACKGROUND +5s")
-            }
-        }
-        #endif
-    }
-    
-    private func recordSnapshot(label: String) {
-        Task { @MainActor in
-            let native = NativeAudioEngine.shared
-            let p = native.player
-            let item = native.playerItem
-            let playerId = String(describing: ObjectIdentifier(p))
-            let itemId = item != nil ? String(describing: ObjectIdentifier(item!)) : "nil"
-            let rate = p.rate
-            let curTime = p.currentTime().seconds
-            let tcStatus = native.timeControlStatusString
-            let itemStatus = native.itemStatusString
-            #if canImport(AVFAudio)
-            let cat = AVAudioSession.sharedInstance().category.rawValue
-            #else
-            let cat = "unknown"
-            #endif
-            
-            let snapshot = DiagnosticSnapshot(
-                label: label,
-                timestamp: Date(),
-                playerIdentifier: playerId,
-                itemIdentifier: itemId,
-                currentTime: curTime,
-                rate: rate,
-                timeControlStatus: tcStatus,
-                itemStatus: itemStatus,
-                audioSessionCategory: cat,
-                lastInterruption: self.lastInterruptionEvent,
-                lastRouteChange: self.lastRouteChangeEvent,
-                lastNativeError: self.lastFailureReason ?? "None"
-            )
-            
-            self.diagnosticSnapshots.append(snapshot)
-            if self.diagnosticSnapshots.count > 10 {
-                self.diagnosticSnapshots.removeFirst()
-            }
-            
-            print("""
-            [BackgroundSnapshot \(label)]
-              player: \(playerId)
-              item: \(itemId)
-              currentTime: \(curTime)s | rate: \(rate) | tcStatus: \(tcStatus) | itemStatus: \(itemStatus)
-              audioCategory: \(cat) | lastError: \(self.lastFailureReason ?? "None")
-              interruption: \(self.lastInterruptionEvent) | routeChange: \(self.lastRouteChangeEvent)
-            """)
-        }
     }
     
     private func removeAudioObservers() {
@@ -332,19 +181,11 @@ public final class PlayerEngine: @unchecked Sendable {
             NotificationCenter.default.removeObserver(obs)
             routeChangeObserver = nil
         }
-        if let obs = backgroundObserver {
-            NotificationCenter.default.removeObserver(obs)
-            backgroundObserver = nil
-        }
-        if let obs = willResignActiveObserver {
-            NotificationCenter.default.removeObserver(obs)
-            willResignActiveObserver = nil
-        }
     }
     
-    // MARK: - Play Song with HD Artwork and Demus-Matched Engine
+    // MARK: - Play Song with HD Artwork and Native AVPlayer
     public func play(song: Song) {
-        // Upgrade artwork to crystal-clear Ultra HD
+        // Upgrade artwork to HD
         let hdArtwork = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id)
         var upgradedSong = song
         upgradedSong.artworkURL = hdArtwork
@@ -352,7 +193,7 @@ public final class PlayerEngine: @unchecked Sendable {
         if currentSong?.id == upgradedSong.id {
             if !isPlaying {
                 Task { @MainActor in
-                    WKAudioEngine.shared.play()
+                    NativeAudioEngine.shared.play()
                 }
                 isPlaying = true
                 updateLockScreen()
@@ -370,8 +211,7 @@ public final class PlayerEngine: @unchecked Sendable {
         self.lastUserToggleTime = now
         self.lastActionTime = now
         self.errorMessage = nil
-        
-        // Controlled isolation: persistCurrentSession(song: upgradedSong)
+        self.lastFailureReason = nil
         
         // Add to persistent library history
         LibraryRepository.shared.addHistory(upgradedSong)
@@ -386,46 +226,28 @@ public final class PlayerEngine: @unchecked Sendable {
         let songToPlay = upgradedSong
         let currentVideoId = upgradedSong.id
         
-        #if canImport(AVFAudio)
-        let diagSession = AVAudioSession.sharedInstance()
-        let diagCat = diagSession.category.rawValue
-        let diagOther = diagSession.isOtherAudioPlaying
-        #else
-        let diagCat = "unknown"
-        let diagOther = false
-        #endif
-        #if canImport(UIKit)
-        let diagState = UIApplication.shared.applicationState.rawValue
-        #else
-        let diagState = 0
-        #endif
         print("""
-        [AudioDiagnostics]
-          CURRENT AUDIO ENGINE: \(isUsingNativeEngine ? "NativeAudioEngine (AVPlayer)" : "WKAudioEngine (WKWebView)")
-          application state: \(diagState)
-          AVAudioSession category: \(diagCat)
-          AVAudioSession isOtherAudioPlaying: \(diagOther)
+        [PlayerEngine] Starting Demus-style playback:
+          Title: \(songToPlay.title)
+          VideoID: \(currentVideoId)
+          Engine: NativeAudioEngine (AVPlayer)
         """)
         
-        // Play exclusively via WKAudioEngine matching Demus embed architecture
         Task { @MainActor in
-            print("[PlayerEngine] Playing via WKAudioEngine for: \(songToPlay.title) (\(currentVideoId))")
-            self.isUsingNativeEngine = false
-            NativeAudioEngine.shared.cleanupPlayer()
-            WKAudioEngine.shared.loadAndPlay(
-                videoId: currentVideoId,
-                title: songToPlay.title,
-                artist: songToPlay.artistName,
-                album: songToPlay.albumName ?? "",
-                artworkUrl: songToPlay.artworkURL?.absoluteString ?? "",
-                duration: upgradedSong.duration
-            )
+            let success = await NativeAudioEngine.shared.loadAndPlay(song: songToPlay)
+            if !success {
+                self.isLoading = false
+                self.isPlaying = false
+                self.errorMessage = NativeAudioEngine.shared.lastFailureReason ?? "Stream resolution or playback failed"
+                self.lastFailureReason = self.errorMessage
+                self.updateLockScreen()
+            }
         }
         
         // Auto-fetch algorithmic Up Next songs like YouTube Music
         fetchRadioQueue(for: currentVideoId)
         
-        // Fast background lyrics pre-fetching
+        // Background lyrics pre-fetching
         let songForLyrics = upgradedSong
         Task {
             await LyricsService.shared.preloadLyrics(song: songForLyrics)
@@ -433,14 +255,12 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     // MARK: - Smart Queue Skipping
-    /// Skips to an upcoming queue song smoothly without blowing away the existing queue.
     public func skipToQueueItem(_ song: Song) {
         guard let targetIdx = queue.firstIndex(where: { $0.id == song.id }) else {
             play(song: song)
             return
         }
         
-        // Move preceding tracks to history
         if targetIdx > 0 {
             let preceding = Array(queue.prefix(targetIdx))
             history.append(contentsOf: preceding)
@@ -474,8 +294,6 @@ public final class PlayerEngine: @unchecked Sendable {
     }
     
     public func pause() {
-        print("[PlayerEngine] pause() CALLED! Callstack:")
-        Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
         if isPlaying {
             togglePlay()
         }
@@ -494,17 +312,11 @@ public final class PlayerEngine: @unchecked Sendable {
         #endif
         
         if isPlaying {
-            print("[PlayerEngine] togglePlay -> PAUSE triggered! Callstack:")
-            Thread.callStackSymbols.prefix(6).forEach { print("   \($0)") }
             userIntentPlaying = false
             self.isPlaying = false
             self.isLoading = false
             Task { @MainActor in
-                if self.isUsingNativeEngine {
-                    NativeAudioEngine.shared.pause()
-                } else {
-                    WKAudioEngine.shared.pause()
-                }
+                NativeAudioEngine.shared.pause()
             }
         } else {
             userIntentPlaying = true
@@ -512,11 +324,7 @@ public final class PlayerEngine: @unchecked Sendable {
             self.isLoading = true
             if currentSong != nil {
                 Task { @MainActor in
-                    if self.isUsingNativeEngine {
-                        NativeAudioEngine.shared.play()
-                    } else {
-                        WKAudioEngine.shared.play()
-                    }
+                    NativeAudioEngine.shared.play()
                 }
             } else if let first = queue.first {
                 play(song: first)
@@ -548,11 +356,7 @@ public final class PlayerEngine: @unchecked Sendable {
         } else {
             isPlaying = false
             Task { @MainActor in
-                if self.isUsingNativeEngine {
-                    NativeAudioEngine.shared.pause()
-                } else {
-                    WKAudioEngine.shared.pause()
-                }
+                NativeAudioEngine.shared.pause()
             }
             updateLockScreen()
         }
@@ -579,11 +383,7 @@ public final class PlayerEngine: @unchecked Sendable {
         let clamped = max(0, min(time, duration))
         self.currentTime = clamped
         Task { @MainActor in
-            if self.isUsingNativeEngine {
-                NativeAudioEngine.shared.seek(to: clamped)
-            } else {
-                WKAudioEngine.shared.seek(to: clamped)
-            }
+            NativeAudioEngine.shared.seek(to: clamped)
         }
         updateLockScreen()
     }
@@ -669,11 +469,7 @@ public final class PlayerEngine: @unchecked Sendable {
         if isRepeat {
             seek(to: 0)
             Task { @MainActor in
-                if self.isUsingNativeEngine {
-                    NativeAudioEngine.shared.play()
-                } else {
-                    WKAudioEngine.shared.play()
-                }
+                NativeAudioEngine.shared.play()
             }
         } else {
             next()
@@ -684,25 +480,10 @@ public final class PlayerEngine: @unchecked Sendable {
 // MARK: - NativeAudioEngineDelegate
 extension PlayerEngine: NativeAudioEngineDelegate {
     public func nativeAudioEngineDidReady() {
-        print("[PlayerEngine] NativeAudioEngine is readyToPlay; verifying advancing playback...")
-    }
-    
-    public func nativeAudioEngineDidConfirmPlayback() {
-        self.isUsingNativeEngine = true
-        self.nativePlaybackConfirmed = true
-        self.lastFailureReason = nil
-        Task { @MainActor in
-            WKAudioEngine.shared.pause()
-        }
-        print("""
-        ==================================================
-        Playback Engine: Native AVPlayer
-        ==================================================
-        """)
+        print("[PlayerEngine] NativeAudioEngine is readyToPlay")
     }
     
     public func nativeAudioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
-        guard isUsingNativeEngine else { return }
         self.isPlaying = isPlaying
         self.isLoading = isLoading
         self.userIntentPlaying = isPlaying
@@ -710,7 +491,6 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     }
     
     public func nativeAudioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
-        guard isUsingNativeEngine else { return }
         self.currentTime = currentTime
         if duration > 0 {
             self.duration = duration
@@ -721,101 +501,15 @@ extension PlayerEngine: NativeAudioEngineDelegate {
     }
     
     public func nativeAudioEngineDidEnd() {
-        guard isUsingNativeEngine else { return }
         handleSongDidEnd()
     }
     
     public func nativeAudioEngineDidFail(error: String) {
-        self.nativePlaybackConfirmed = false
+        self.isPlaying = false
+        self.isLoading = false
         self.lastFailureReason = error
         self.errorMessage = error
-        
-        if forceNativeOnly {
-            print("[PlayerEngine] NativeAudioEngine failed: \(error), but Force Native-Only is ON. Refusing WK fallback.")
-            self.isUsingNativeEngine = true
-            self.isPlaying = false
-            self.isLoading = false
-            return
-        }
-        
-        self.isUsingNativeEngine = false
-        print("""
-        ==================================================
-        Playback Engine: WKAudioEngine fallback
-        ==================================================
-        """)
-        print("[PlayerEngine] NativeAudioEngine failed: \(error). Falling back to WKAudioEngine.")
-        if let current = currentSong {
-            Task { @MainActor in
-                NativeAudioEngine.shared.cleanupPlayer()
-                WKAudioEngine.shared.loadAndPlay(videoId: current.id)
-            }
-        }
-    }
-}
-
-// MARK: - WKAudioEngineDelegate
-extension PlayerEngine: WKAudioEngineDelegate {
-    public func audioEngineDidReady() {
-        if !isUsingNativeEngine {
-            print("""
-            ==================================================
-            Playback Engine: WKAudioEngine fallback
-            ==================================================
-            """)
-        }
-        print("[PlayerEngine] WKAudioEngine ready")
-    }
-    
-    public func audioEngineDidChangeState(isPlaying: Bool, isLoading: Bool) {
-        guard !isUsingNativeEngine else { return }
-        let now = Date().timeIntervalSince1970
-        let inGracePeriod = (now - lastUserToggleTime) < 0.6
-        
-        if inGracePeriod {
-            // Respect user's explicit intent during grace period to prevent flickering
-            if userIntentPlaying {
-                self.isPlaying = true
-                self.isLoading = isLoading
-            } else {
-                self.isPlaying = false
-                self.isLoading = false
-            }
-        } else {
-            if isLoading {
-                self.isLoading = true
-                if userIntentPlaying {
-                    self.isPlaying = true
-                }
-            } else {
-                self.isPlaying = isPlaying
-                self.isLoading = false
-                self.userIntentPlaying = isPlaying
-            }
-        }
         updateLockScreen()
-    }
-    
-    public func audioEngineDidUpdateTime(currentTime: TimeInterval, duration: TimeInterval) {
-        guard !isUsingNativeEngine else { return }
-        self.currentTime = currentTime
-        if duration > 0 {
-            self.duration = duration
-        }
-        if Int(currentTime) % 5 == 0 {
-            updateLockScreen()
-        }
-    }
-    
-    public func audioEngineDidEnd() {
-        guard !isUsingNativeEngine else { return }
-        handleSongDidEnd()
-    }
-    
-    public func audioEngineDidFail(error: String) {
-        guard !isUsingNativeEngine else { return }
-        self.isLoading = false
-        self.errorMessage = error
-        print("[PlayerEngine] WKAudioEngine error:", error)
+        print("[PlayerEngine] NativeAudioEngine error: \(error)")
     }
 }

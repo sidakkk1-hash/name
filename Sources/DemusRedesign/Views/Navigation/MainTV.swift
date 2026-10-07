@@ -80,7 +80,7 @@ public struct DemusAppRootView: View {
         ZStack {
             MainTV()
             #if canImport(UIKit)
-            WKAudioEngineView()
+            WKStreamExtractorView()
                 .frame(width: 1, height: 1)
                 .opacity(0.001)
                 .allowsHitTesting(false)
