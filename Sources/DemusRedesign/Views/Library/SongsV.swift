@@ -18,7 +18,9 @@ public struct SongsV: View {
         var id: String { rawValue }
     }
     
-    public init() {}
+    public init(initialShowFavoritesOnly: Bool = false) {
+        _showFavoritesOnly = State(initialValue: initialShowFavoritesOnly)
+    }
     
     private var displaySongs: [Song] {
         var base = librarySongs

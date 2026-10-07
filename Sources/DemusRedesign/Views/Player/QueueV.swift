@@ -15,15 +15,15 @@ public struct QueueV: View {
             List {
                 // Shuffle & Repeat Header Section
                 Section {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 10) {
                         Button {
                             player.isShuffle.toggle()
                         } label: {
-                            HStack {
+                            HStack(spacing: 6) {
                                 Image(systemName: "shuffle")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                 Text("Shuffle")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.system(size: 14, weight: .medium))
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
@@ -36,11 +36,11 @@ public struct QueueV: View {
                         Button {
                             player.isRepeat.toggle()
                         } label: {
-                            HStack {
+                            HStack(spacing: 6) {
                                 Image(systemName: "repeat")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                 Text("Repeat")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.system(size: 14, weight: .medium))
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
@@ -49,8 +49,25 @@ public struct QueueV: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        
+                        Button {
+                            player.isAutoplayEnabled.toggle()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "infinity")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text("Autoplay")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(player.isAutoplayEnabled ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
+                            .foregroundStyle(player.isAutoplayEnabled ? .white : AppleMusicTheme.label)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
                     .listRowBackground(Color.clear)
                 }
                 

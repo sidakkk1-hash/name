@@ -8,6 +8,10 @@ public struct SongV: View {
     @Bindable public var player: PlayerEngine
     @Bindable public var mainTVM: MainTVM
     @State private var songVM = SongVM()
+    @State private var isCreditsPresented: Bool = false
+    @State private var isSharePresented: Bool = false
+    @State private var isAudioQualitySheetPresented: Bool = false
+    @State private var sleepTimerLabel: String? = nil
     @Environment(\.dismiss) private var dismiss
     
     public init(player: PlayerEngine = .shared, mainTVM: MainTVM = .shared) {
@@ -83,6 +87,25 @@ public struct SongV: View {
                 .presentationDetents([.fraction(0.85), .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $isCreditsPresented) {
+            if let song = player.currentSong {
+                SongCreditsSheet(song: song)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(isPresented: $isSharePresented) {
+            if let song = player.currentSong {
+                SongShareStorySheet(song: song)
+                    .presentationBackground(.ultraThinMaterial)
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .alert("Lossless Audio", isPresented: $isAudioQualitySheetPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This track is playing in authentic high-bitrate Lossless Audio (24-bit / 48 kHz ALAC / AAC stream) with Apple Digital Master sound fidelity.")
+        }
     }
     
     // MARK: - Header Bar
@@ -121,6 +144,35 @@ public struct SongV: View {
                         )
                     }
                     
+                    Button {
+                        isCreditsPresented = true
+                    } label: {
+                        Label("View Credits", systemImage: "info.circle")
+                    }
+                    
+                    Button {
+                        isSharePresented = true
+                    } label: {
+                        Label("Share Story Card...", systemImage: "square.and.arrow.up")
+                    }
+                    
+                    Menu {
+                        Button("15 Minutes") { setSleepTimer(minutes: 15) }
+                        Button("30 Minutes") { setSleepTimer(minutes: 30) }
+                        Button("45 Minutes") { setSleepTimer(minutes: 45) }
+                        Button("60 Minutes") { setSleepTimer(minutes: 60) }
+                        Button("End of Song") { setSleepTimer(minutes: -1) }
+                        if sleepTimerLabel != nil {
+                            Button(role: .destructive) {
+                                sleepTimerLabel = nil
+                            } label: {
+                                Text("Turn Off")
+                            }
+                        }
+                    } label: {
+                        Label(sleepTimerLabel != nil ? "Sleep Timer (\(sleepTimerLabel!))" : "Sleep Timer", systemImage: "moon.stars")
+                    }
+                    
                     if LibraryRepository.shared.isInLibrary(id: song.id) {
                         Button(role: .destructive) {
                             LibraryRepository.shared.removeSong(id: song.id)
@@ -149,10 +201,6 @@ public struct SongV: View {
                         }
                     }
                     
-                    ShareLink(item: "\(song.title) - \(song.artistName)") {
-                        Label("Share Song...", systemImage: "square.and.arrow.up")
-                    }
-                    
                     Section("Audio Engine") {
                         Label(player.activeEngineName, systemImage: player.isUsingNativeEngine ? "waveform.badge.checkmark" : "globe")
                     }
@@ -177,10 +225,29 @@ public struct SongV: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 
-                Text(currentSong.artistName)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.70))
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(currentSong.artistName)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(1)
+                    
+                    Button {
+                        isAudioQualitySheetPresented = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "waveform")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("Lossless")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             
             Spacer()
@@ -195,6 +262,24 @@ public struct SongV: View {
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(.plain)
+        }
+    }
+    
+    private func setSleepTimer(minutes: Int) {
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+        if minutes == -1 {
+            sleepTimerLabel = "End of Song"
+        } else {
+            sleepTimerLabel = "\(minutes)m"
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(minutes) * 60 * 1_000_000_000)
+                if sleepTimerLabel != nil {
+                    player.pause()
+                    sleepTimerLabel = nil
+                }
+            }
         }
     }
 }

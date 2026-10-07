@@ -4,32 +4,33 @@ import SwiftUI
 // MARK: - App Tab Enum
 public enum AppTab: Int, CaseIterable, Identifiable, Sendable {
     case explore = 0
-    case search = 1
+    case radio = 1
     case songs = 2
-    case playlists = 3
-    case settings = 4
+    case search = 3
     
     public var id: Int { rawValue }
     
     public var title: String {
         switch self {
-        case .explore: return "Listen Now"
-        case .search: return "Search"
+        case .explore: return "Home"
+        case .radio: return "Radio"
         case .songs: return "Library"
-        case .playlists: return "Playlists"
-        case .settings: return "Settings"
+        case .search: return "Search"
         }
     }
     
     public var iconName: String {
         switch self {
-        case .explore: return "play.circle.fill"
-        case .search: return "magnifyingglass"
+        case .explore: return "house.fill"
+        case .radio: return "dot.radiowaves.left.and.right"
         case .songs: return "square.stack.fill"
-        case .playlists: return "music.note.list"
-        case .settings: return "gearshape.fill"
+        case .search: return "magnifyingglass"
         }
     }
+    
+    // Aliases for compatibility
+    public static var playlists: AppTab { .songs }
+    public static var settings: AppTab { .songs }
 }
 
 // MARK: - MainTVM (Matches Demus.MainTVM class)

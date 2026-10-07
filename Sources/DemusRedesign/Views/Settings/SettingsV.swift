@@ -10,6 +10,8 @@ public struct SettingsV: View {
     @State private var audioQuality: String = "Lossless (24-bit/48kHz)"
     @State private var dolbyAtmos: Bool = true
     @State private var soundCheck: Bool = true
+    @AppStorage("demus_crossfade_enabled") private var isCrossfadeEnabled: Bool = true
+    @AppStorage("demus_crossfade_duration") private var crossfadeDuration: Double = 4.0
     
     public init() {}
     
@@ -77,6 +79,19 @@ public struct SettingsV: View {
                     Toggle("Show Song Durations", isOn: $mainTVM.options.showSongDurations)
                     Toggle("Show Rewind Button", isOn: $mainTVM.options.showRewindButton)
                     Toggle("Autoplay Similar Music (Radio)", isOn: $mainTVM.options.autoplay)
+                    Toggle("Seamless Crossfade", isOn: $isCrossfadeEnabled)
+                    if isCrossfadeEnabled {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Crossfade Duration")
+                                Spacer()
+                                Text("\(Int(crossfadeDuration))s")
+                                    .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            }
+                            Slider(value: $crossfadeDuration, in: 1...12, step: 1)
+                                .tint(AppleMusicTheme.accent)
+                        }
+                    }
                     Toggle("Dolby Atmos", isOn: $dolbyAtmos)
                     Toggle("Sound Check", isOn: $soundCheck)
                     
@@ -243,7 +258,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("2.0.33")
+                        Text("2.0.34")
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
                     HStack {

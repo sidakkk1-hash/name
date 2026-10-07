@@ -23,6 +23,7 @@ public final class PlayerEngine: @unchecked Sendable {
     public var history: [Song] = []
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
+    public var isAutoplayEnabled: Bool = true
     public var errorMessage: String?
     public let isUsingNativeEngine: Bool = false
     
@@ -342,6 +343,20 @@ public final class PlayerEngine: @unchecked Sendable {
         
         if idx + 1 < queue.count {
             play(song: queue[idx + 1])
+        } else if isAutoplayEnabled, let last = currentSong {
+            Task {
+                let similar = await RadioService.shared.fetchUpNext(videoId: last.id)
+                if let nextSong = similar.first {
+                    await MainActor.run {
+                        self.appendRadioSongs(similar)
+                        self.play(song: nextSong)
+                    }
+                } else if self.isRepeat || !self.queue.isEmpty {
+                    await MainActor.run {
+                        self.play(song: self.queue[0])
+                    }
+                }
+            }
         } else if isRepeat || !queue.isEmpty {
             play(song: queue[0])
         } else {
