@@ -8,6 +8,7 @@ import SwiftUI
 public struct LibraryV: View {
     @Bindable public var player: PlayerEngine = .shared
     @State private var isSettingsPresented: Bool = false
+    @State private var isPlaygroundPresented: Bool = false
     @State private var librarySongs: [Song] = LibraryRepository.shared.librarySongs
     
     public init() {}
@@ -21,13 +22,25 @@ public struct LibraryV: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Header Bar (Large Title + Profile Avatar - Screenshot 4)
-                    HStack {
+                    // Header Bar (Large Title + Playlist Playground + Profile Avatar - Screenshot 4)
+                    HStack(spacing: 16) {
                         Text("Library")
                             .font(.system(size: 34, weight: .bold))
                             .foregroundStyle(.white)
                         
                         Spacer()
+                        
+                        // Playlist Playground (+) Button
+                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            isPlaygroundPresented = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(Color(red: 0.98, green: 0.15, blue: 0.28))
+                        }
                         
                         Button {
                             #if canImport(UIKit)
@@ -163,6 +176,9 @@ public struct LibraryV: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $isSettingsPresented) {
                 SettingsV()
+            }
+            .sheet(isPresented: $isPlaygroundPresented) {
+                PlaylistPlaygroundV()
             }
             .onAppear {
                 librarySongs = LibraryRepository.shared.librarySongs

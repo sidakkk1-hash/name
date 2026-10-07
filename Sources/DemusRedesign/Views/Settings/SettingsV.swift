@@ -10,8 +10,15 @@ public struct SettingsV: View {
     @State private var audioQuality: String = "Lossless (24-bit/48kHz)"
     @State private var dolbyAtmos: Bool = true
     @State private var soundCheck: Bool = true
+    
+    // Apple 2026 Features Storage
+    @AppStorage("demus_song_transitions") private var songTransition: String = "Crossfade"
     @AppStorage("demus_crossfade_enabled") private var isCrossfadeEnabled: Bool = true
-    @AppStorage("demus_crossfade_duration") private var crossfadeDuration: Double = 4.0
+    @AppStorage("demus_crossfade_duration") private var crossfadeDuration: Double = 6.0
+    @AppStorage("demus_animated_artwork") private var animatedArtworkSetting: String = "Wi-Fi & Cellular"
+    @AppStorage("demus_music_haptics_enabled") private var musicHapticsEnabled: Bool = true
+    @AppStorage("demus_music_haptics_intensity") private var musicHapticsIntensity: String = "Medium"
+    @AppStorage("demus_music_haptics_mode") private var musicHapticsMode: String = "Full Mix"
     
     public init() {}
     
@@ -74,24 +81,138 @@ public struct SettingsV: View {
                     }
                 }
                 
-                // Audio & Playback Section
-                Section("Audio & Playback") {
-                    Toggle("Show Song Durations", isOn: $mainTVM.options.showSongDurations)
-                    Toggle("Show Rewind Button", isOn: $mainTVM.options.showRewindButton)
-                    Toggle("Autoplay Similar Music (Radio)", isOn: $mainTVM.options.autoplay)
-                    Toggle("Seamless Crossfade", isOn: $isCrossfadeEnabled)
-                    if isCrossfadeEnabled {
+                // Song Transitions Section (Apple Music 2026)
+                Section {
+                    Picker("Song Transitions", selection: $songTransition) {
+                        Text("Off").tag("Off")
+                        Text("Crossfade").tag("Crossfade")
+                        Text("AutoMix").tag("AutoMix")
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: songTransition) { _, val in
+                        isCrossfadeEnabled = (val == "Crossfade" || val == "AutoMix")
+                    }
+                    
+                    if songTransition == "Crossfade" {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Crossfade Duration")
                                 Spacer()
                                 Text("\(Int(crossfadeDuration))s")
                                     .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                    .font(.system(size: 14, weight: .semibold))
                             }
                             Slider(value: $crossfadeDuration, in: 1...12, step: 1)
                                 .tint(AppleMusicTheme.accent)
                         }
+                        .padding(.vertical, 2)
+                    } else if songTransition == "AutoMix" {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Label("AutoMix DJ-Style Transitions", systemImage: "sparkles")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(AppleMusicTheme.accent)
+                                Spacer()
+                                Text("ACTIVE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AppleMusicTheme.accent.opacity(0.18))
+                                    .foregroundStyle(AppleMusicTheme.accent)
+                                    .clipShape(Capsule())
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "circle.fill")
+                                        .font(.system(size: 6))
+                                        .foregroundStyle(AppleMusicTheme.accent)
+                                    Text("Beat Match • Tempo alignment")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                }
+                                HStack(spacing: 6) {
+                                    Image(systemName: "circle.fill")
+                                        .font(.system(size: 6))
+                                        .foregroundStyle(AppleMusicTheme.accent)
+                                    Text("Smart Intro/Outro • Dynamic transition anchors")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                }
+                                HStack(spacing: 6) {
+                                    Image(systemName: "circle.fill")
+                                        .font(.system(size: 6))
+                                        .foregroundStyle(AppleMusicTheme.accent)
+                                    Text("Vocals Protection • Auto-attenuation to prevent overlap")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                                }
+                            }
+                            
+                            Text("Apple iOS 2026: AutoMix uses tempo analysis and time-stretching. Active hybrid mode blends intelligent crossfade transitions.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(AppleMusicTheme.secondaryLabel.opacity(0.8))
+                        }
+                        .padding(.vertical, 4)
                     }
+                } header: {
+                    Text("Song Transitions")
+                }
+                
+                // Animated Artwork Section
+                Section {
+                    Picker("Animated Artwork", selection: $animatedArtworkSetting) {
+                        Text("Off").tag("Off")
+                        Text("Wi-Fi & Cellular").tag("Wi-Fi & Cellular")
+                        Text("Wi-Fi Only").tag("Wi-Fi Only")
+                    }
+                } header: {
+                    Text("Animated Artwork")
+                } footer: {
+                    Text("Supported album artwork features fluid breathing motion and artwork-derived ambient bloom.")
+                }
+                
+                // Music Haptics Section
+                Section {
+                    Toggle("Music Haptics", isOn: $musicHapticsEnabled)
+                        .onChange(of: musicHapticsEnabled) { _, enabled in
+                            MusicHapticsManager.shared.isEnabled = enabled
+                        }
+                    
+                    if musicHapticsEnabled {
+                        Picker("Intensity", selection: $musicHapticsIntensity) {
+                            ForEach(MusicHapticsIntensity.allCases) { item in
+                                Text(item.rawValue).tag(item.rawValue)
+                            }
+                        }
+                        .onChange(of: musicHapticsIntensity) { _, val in
+                            if let intVal = MusicHapticsIntensity(rawValue: val) {
+                                MusicHapticsManager.shared.intensity = intVal
+                            }
+                        }
+                        
+                        Picker("Mode", selection: $musicHapticsMode) {
+                            ForEach(MusicHapticsMode.allCases) { item in
+                                Text(item.rawValue).tag(item.rawValue)
+                            }
+                        }
+                        .onChange(of: musicHapticsMode) { _, val in
+                            if let modeVal = MusicHapticsMode(rawValue: val) {
+                                MusicHapticsManager.shared.mode = modeVal
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Music Haptics")
+                } footer: {
+                    Text("Apple Music Haptics produces tactile taps, textures, and rhythm synchronized to your music.")
+                }
+                
+                // Audio & Playback Section
+                Section("Audio & Playback") {
+                    Toggle("Show Song Durations", isOn: $mainTVM.options.showSongDurations)
+                    Toggle("Show Rewind Button", isOn: $mainTVM.options.showRewindButton)
+                    Toggle("Autoplay Similar Music (Radio)", isOn: $mainTVM.options.autoplay)
                     Toggle("Dolby Atmos", isOn: $dolbyAtmos)
                     Toggle("Sound Check", isOn: $soundCheck)
                     
@@ -117,7 +238,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.32 (Artist Nav, Stream Recovery & Native Volume)")
+                        Text("v2.0.37 (Playlist Playground, Haptics & Song Transitions)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }

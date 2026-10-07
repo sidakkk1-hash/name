@@ -176,6 +176,48 @@ public struct MiniPlayer: View {
                     )
                 }
                 .buttonStyle(.appleMusicCard)
+                .contextMenu {
+                    Button {
+                        player.togglePlay()
+                    } label: {
+                        Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill")
+                    }
+                    
+                    Button {
+                        player.next()
+                    } label: {
+                        Label("Next Track", systemImage: "forward.fill")
+                    }
+                    
+                    Button {
+                        player.prev()
+                    } label: {
+                        Label("Previous Track", systemImage: "backward.fill")
+                    }
+                    
+                    Divider()
+                    
+                    Button {
+                        player.toggleFavorite(for: currentSong.id)
+                    } label: {
+                        Label(
+                            LibraryRepository.shared.isFavorite(id: currentSong.id) ? "Unfavorite" : "Favorite",
+                            systemImage: LibraryRepository.shared.isFavorite(id: currentSong.id) ? "star.fill" : "star"
+                        )
+                    }
+                    
+                    Button {
+                        mainTVM.isLyricsPresented = true
+                    } label: {
+                        Label("View Lyrics", systemImage: "quote.bubble")
+                    }
+                    
+                    Button {
+                        mainTVM.isQueuePresented = true
+                    } label: {
+                        Label("Playing Next Queue", systemImage: "list.bullet")
+                    }
+                }
                 // Swipe Left/Right Gesture for Track Change
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 25)

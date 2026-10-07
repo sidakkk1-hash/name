@@ -7,6 +7,7 @@ public struct PlaylistsV: View {
     @Bindable public var player: PlayerEngine = .shared
     @State private var playlists: [Playlist] = LibraryRepository.shared.playlists
     @State private var showingNewPlaylistAlert: Bool = false
+    @State private var isPlaygroundPresented: Bool = false
     @State private var newPlaylistName: String = ""
     
     private let columns = [
@@ -124,14 +125,27 @@ public struct PlaylistsV: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingNewPlaylistAlert = true
+                    Menu {
+                        Button {
+                            isPlaygroundPresented = true
+                        } label: {
+                            Label("Playlist Playground ✨", systemImage: "sparkles")
+                        }
+                        
+                        Button {
+                            showingNewPlaylistAlert = true
+                        } label: {
+                            Label("New Playlist", systemImage: "plus")
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(AppleMusicTheme.accent)
                     }
                 }
+            }
+            .sheet(isPresented: $isPlaygroundPresented) {
+                PlaylistPlaygroundV()
             }
             .alert("New Playlist", isPresented: $showingNewPlaylistAlert) {
                 TextField("Playlist Name", text: $newPlaylistName)

@@ -13,57 +13,82 @@ public struct QueueV: View {
     public var body: some View {
         NavigationStack {
             List {
-                // Shuffle & Repeat Header Section
+                // Playback Controls Action Bar (AutoPlay, Crossfade, Shuffle, Repeat)
                 Section {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        // ∞ AutoPlay (Subtle red active state)
                         Button {
-                            player.isShuffle.toggle()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "shuffle")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Shuffle")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(player.isShuffle ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
-                            .foregroundStyle(player.isShuffle ? .white : AppleMusicTheme.label)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button {
-                            player.isRepeat.toggle()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "repeat")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Repeat")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(player.isRepeat ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
-                            .foregroundStyle(player.isRepeat ? .white : AppleMusicTheme.label)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
                             player.isAutoplayEnabled.toggle()
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 5) {
                                 Image(systemName: "infinity")
-                                    .font(.system(size: 14, weight: .bold))
-                                Text("Autoplay")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: 13, weight: .bold))
+                                Text("AutoPlay")
+                                    .font(.system(size: 12, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(player.isAutoplayEnabled ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
+                            .padding(.vertical, 9)
+                            .background(player.isAutoplayEnabled ? Color(red: 0.98, green: 0.15, blue: 0.28).opacity(0.85) : AppleMusicTheme.secondarySystemBackground)
                             .foregroundStyle(player.isAutoplayEnabled ? .white : AppleMusicTheme.label)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Crossfade Toggle
+                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            player.isCrossfadeEnabled.toggle()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "waveform.badge.magnifyingglass")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Crossfade")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(player.isCrossfadeEnabled ? AppleMusicTheme.accent.opacity(0.85) : AppleMusicTheme.secondarySystemBackground)
+                            .foregroundStyle(player.isCrossfadeEnabled ? .white : AppleMusicTheme.label)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Shuffle Button
+                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            player.isShuffle.toggle()
+                        } label: {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(width: 42)
+                                .padding(.vertical, 9)
+                                .background(player.isShuffle ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
+                                .foregroundStyle(player.isShuffle ? .white : AppleMusicTheme.label)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Repeat Button
+                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            player.isRepeat.toggle()
+                        } label: {
+                            Image(systemName: "repeat")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(width: 42)
+                                .padding(.vertical, 9)
+                                .background(player.isRepeat ? AppleMusicTheme.accent : AppleMusicTheme.secondarySystemBackground)
+                                .foregroundStyle(player.isRepeat ? .white : AppleMusicTheme.label)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -127,11 +152,24 @@ public struct QueueV: View {
                         .tint(AppleMusicTheme.accent)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+                    HStack(spacing: 12) {
+                        Button {
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                            player.isCrossfadeEnabled.toggle()
+                        } label: {
+                            Image(systemName: player.isCrossfadeEnabled ? "waveform.badge.magnifyingglass" : "waveform")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(player.isCrossfadeEnabled ? AppleMusicTheme.accent : AppleMusicTheme.secondaryLabel)
+                        }
+                        
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .font(.system(size: 16, weight: .semibold))
+                        .tint(AppleMusicTheme.accent)
                     }
-                    .font(.system(size: 16, weight: .semibold))
-                    .tint(AppleMusicTheme.accent)
                 }
             }
         }

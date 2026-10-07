@@ -24,6 +24,18 @@ public final class PlayerEngine: @unchecked Sendable {
     public var isShuffle: Bool = false
     public var isRepeat: Bool = false
     public var isAutoplayEnabled: Bool = true
+    public var isCrossfadeEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "demus_crossfade_enabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "demus_crossfade_enabled") }
+    }
+    public var crossfadeDuration: Double {
+        get {
+            let val = UserDefaults.standard.double(forKey: "demus_crossfade_duration")
+            return val == 0 ? 6.0 : val
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "demus_crossfade_duration") }
+    }
+    private var isCrossfading: Bool = false
     public var errorMessage: String?
     public let isUsingNativeEngine: Bool = false
     
@@ -200,6 +212,8 @@ public final class PlayerEngine: @unchecked Sendable {
         self.isPlaying = false
         self.isLoading = true
         self.userIntentPlaying = true
+        self.isCrossfading = false
+        MusicHapticsManager.shared.triggerTrackChangeHaptic()
         let now = Date().timeIntervalSince1970
         self.lastUserToggleTime = now
         self.lastActionTime = now
@@ -481,6 +495,25 @@ public final class PlayerEngine: @unchecked Sendable {
             next()
         }
     }
+    
+    private func startCrossfade(remaining: Double) {
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let steps = 8
+            let stepDelay = max(0.1, remaining / Double(steps))
+            for i in 1...steps {
+                guard self.isCrossfading, self.isPlaying else { break }
+                let fraction = Double(steps - i) / Double(steps)
+                WKEmbedAudioEngine.shared.setVolume(self.volume * fraction)
+                try? await Task.sleep(nanoseconds: UInt64(stepDelay * 1_000_000_000))
+            }
+            guard self.isCrossfading else { return }
+            self.next()
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            WKEmbedAudioEngine.shared.setVolume(self.volume)
+            self.isCrossfading = false
+        }
+    }
 }
 
 // MARK: - WKEmbedAudioEngineDelegate
@@ -493,6 +526,7 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
         self.isPlaying = isPlaying
         self.isLoading = isLoading
         self.userIntentPlaying = isPlaying
+        MusicHapticsManager.shared.handlePlaybackStateChange(isPlaying: isPlaying)
         updateLockScreen()
     }
     
@@ -501,19 +535,32 @@ extension PlayerEngine: WKEmbedAudioEngineDelegate {
         if duration > 0 {
             self.duration = duration
         }
+        
+        // Dynamic Crossfade Transition
+        if isCrossfadeEnabled && duration > (crossfadeDuration + 5.0) && !isCrossfading {
+            let remaining = duration - currentTime
+            if remaining <= crossfadeDuration && remaining > 1.0 {
+                isCrossfading = true
+                startCrossfade(remaining: remaining)
+            }
+        }
+        
         if Int(currentTime) % 5 == 0 {
             updateLockScreen()
         }
     }
-    
+
     public func embedAudioEngineDidEnd() {
+        isCrossfading = false
         handleSongDidEnd()
     }
     
     public func embedAudioEngineDidFail(error: String) {
         self.isPlaying = false
         self.isLoading = false
+        self.isCrossfading = false
         self.errorMessage = error
+        MusicHapticsManager.shared.handlePlaybackStateChange(isPlaying: false)
         updateLockScreen()
         print("[PlayerEngine] WKEmbedAudioEngine error: \(error)")
     }
