@@ -54,6 +54,10 @@ public final class WKEmbedAudioEngine: NSObject, WKScriptMessageHandler, WKNavig
     public private(set) var isLoading: Bool = false
     public private(set) var currentVideoId: String?
     
+    public var currentTime: Double {
+        diagnostics.playerCurrentTime
+    }
+    
     private var webView: WKWebView?
     private var progressTimer: Task<Void, Never>?
     private var appStateObservers: [any NSObjectProtocol] = []
@@ -448,7 +452,7 @@ public final class WKEmbedAudioEngine: NSObject, WKScriptMessageHandler, WKNavig
         
         // Resilience Watchdog: If playback doesn't start within 1.2s (e.g. paused for 1-2 mins and connection went idle)
         let savedTime = self.currentTime
-        let vId = self.currentVideoId
+        guard let vId = self.currentVideoId, !vId.isEmpty else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
             guard let self = self, self.isPlaying, self.diagnostics.playerState != "playing" else { return }
@@ -475,7 +479,7 @@ public final class WKEmbedAudioEngine: NSObject, WKScriptMessageHandler, WKNavig
             
             // Stage 2: If stream socket dropped during idle pause, re-load video at exact saved time
             try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
-            guard self.isPlaying, self.diagnostics.playerState != "playing", !vId.isEmpty else { return }
+            guard self.isPlaying, self.diagnostics.playerState != "playing" else { return }
             print("[WKEmbedAudioEngine] Re-anchoring stream via loadVideoById at \(savedTime)s")
             
             let reloadJS = """

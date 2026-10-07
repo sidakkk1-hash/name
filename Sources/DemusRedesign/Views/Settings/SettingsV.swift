@@ -243,7 +243,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("2.0.32")
+                        Text("2.0.33")
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
                     HStack {
