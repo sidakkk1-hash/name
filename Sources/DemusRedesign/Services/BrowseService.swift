@@ -707,11 +707,11 @@ public final class BrowseService: @unchecked Sendable {
                 }
             }
             
-            // Fans might also like / Similar Artists
-            else if titleText.contains("fan") || titleText.contains("like") || titleText.contains("similar") || titleText.contains("featured on") {
+            // Fans might also like / Similar Artists (Strictly Artists only, no playlists)
+            else if (titleText.contains("fan") || titleText.contains("like") || titleText.contains("similar")) && !titleText.contains("featured on") {
                 for item in items {
                     if let twoRow = item["musicTwoRowItemRenderer"] as? [String: Any] {
-                        var relName = "Artist"
+                        var relName = ""
                         var relId = ""
                         var relArtwork: URL?
                         var relSub: String?
@@ -723,17 +723,27 @@ public final class BrowseService: @unchecked Sendable {
                         }
                         
                         if let titleRuns = (twoRow["title"] as? [String: Any])?["runs"] as? [[String: Any]], let first = titleRuns.first {
-                            relName = first["text"] as? String ?? relName
+                            relName = first["text"] as? String ?? ""
                             if relId.isEmpty,
                                let nav = first["navigationEndpoint"] as? [String: Any],
                                let browse = nav["browseEndpoint"] as? [String: Any],
-                               let bId = browse["browseId"] as? String {
+                               let bId = browse["browseId"] as? String, bId.hasPrefix("UC") {
                                 relId = bId
                             }
                         }
                         
                         if let subRuns = (twoRow["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]] {
                             relSub = subRuns.compactMap { $0["text"] as? String }.joined()
+                        }
+                        
+                        // Reject playlists that masquerade as artists
+                        if let sub = relSub?.lowercased(), sub.contains("playlist") {
+                            continue
+                        }
+                        
+                        // Strict check: Must have UC prefix channel ID and non-empty name
+                        guard !relId.isEmpty, relId.hasPrefix("UC"), !relName.isEmpty, relName != "Artist" else {
+                            continue
                         }
                         
                         if let thumbRenderer = twoRow["thumbnailRenderer"] as? [String: Any],
@@ -745,14 +755,12 @@ public final class BrowseService: @unchecked Sendable {
                             relArtwork = ImageHelper.highResArtworkURL(from: URL(string: urlStr))
                         }
                         
-                        if !relId.isEmpty {
-                            relatedArtists.append(Artist(
-                                id: relId,
-                                name: relName,
-                                artworkURL: relArtwork,
-                                subscribers: relSub
-                            ))
-                        }
+                        relatedArtists.append(Artist(
+                            id: relId,
+                            name: relName,
+                            artworkURL: relArtwork,
+                            subscribers: relSub
+                        ))
                     }
                 }
             }

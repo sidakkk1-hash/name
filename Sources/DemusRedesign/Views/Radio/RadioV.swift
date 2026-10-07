@@ -1,17 +1,16 @@
 import SwiftUI
 
 // MARK: - RadioV (Apple Music Radio Screen)
-/// Recreates the authentic iOS Apple Music Radio tab (Screenshots 1, 2, 3).
+/// Recreates the authentic iOS Apple Music Radio tab.
 /// Features Apple Music 1, Hits, Country, Club, Chill badge grids,
-/// "Listen to Live Radio for Free" featured shows, glowing neon "Non-Stop Music" genre stations (Bollywood, Punjabi, Tamil),
-/// and international live broadcasts.
+/// "Listen to Live Radio for Free" featured shows, and glowing neon "Non-Stop Music" genre stations (Bollywood, Punjabi, Tamil).
 public struct RadioV: View {
     @Bindable public var player: PlayerEngine = .shared
     @State private var isSettingsPresented: Bool = false
     
     public init() {}
     
-    // Station Badges data
+    // Station Badges data (Screenshot 1)
     private let badges: [RadioBadge] = [
         RadioBadge(id: "am1", title: "1", subtitle: "Apple Music Radio", color: .red, type: .number),
         RadioBadge(id: "hits", title: "HITS\nHITS\nHITS", subtitle: "Apple Music Radio", color: Color(red: 0.1, green: 0.65, blue: 1.0), type: .text),
@@ -58,21 +57,10 @@ public struct RadioV: View {
         )
     ]
     
-    // International Stations
-    private let internationalStations: [InternationalStation] = [
-        InternationalStation(id: "virgin", name: "Virgin Radio Italy", subtitle: "Style Rock", logoColor: Color(red: 0.85, green: 0.15, blue: 0.15), query: "Virgin Radio Italy Rock"),
-        InternationalStation(id: "nova", name: "Nova 100", subtitle: "TuneIn", logoColor: Color(red: 0.15, green: 0.35, blue: 0.85), query: "Nova 100 Radio Australia"),
-        InternationalStation(id: "rum", name: "RUM Radio", subtitle: "TuneIn", logoColor: Color(red: 0.65, green: 0.15, blue: 0.25), query: "RUM Radio")
-    ]
-    
     public var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Top Red Promo Banner (Screenshot 1)
-                    promoBanner
-                        .padding(.horizontal, 16)
-                    
                     // Header Bar (Radio title + profile avatar)
                     HStack {
                         Text("Radio")
@@ -93,6 +81,7 @@ public struct RadioV: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .padding(.top, 8)
                     
                     // Grid of 6 Station Badges (Screenshot 1)
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
@@ -142,33 +131,10 @@ public struct RadioV: View {
                         }
                     }
                     
-                    // International Broadcasters (Screenshot 3)
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("International Broadcasters")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(.white)
-                            
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.4))
-                        }
-                        .padding(.horizontal, 16)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 14) {
-                                ForEach(internationalStations) { station in
-                                    internationalStationCard(station: station)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                    
                     // Space for floating mini player & tab bar
                     Color.clear.frame(height: 120)
                 }
-                .padding(.top, 12)
+                .padding(.top, 4)
             }
             .background(Color.black.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -176,45 +142,6 @@ public struct RadioV: View {
                 SettingsV()
             }
         }
-    }
-    
-    // MARK: - Top Promo Banner
-    private var promoBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "music.note")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(8)
-                .background(Color.white.opacity(0.2))
-                .clipShape(Circle())
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: "applelogo")
-                        .font(.system(size: 13, weight: .bold))
-                    Text("Music")
-                        .font(.system(size: 14, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                
-                Text("Play & download all the music you want")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-            }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right.circle.fill")
-                .font(.system(size: 24))
-                .foregroundStyle(.white.opacity(0.6))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(red: 0.98, green: 0.15, blue: 0.28))
-        )
     }
     
     // MARK: - Station Badge View
@@ -365,40 +292,6 @@ public struct RadioV: View {
         .buttonStyle(.plain)
     }
     
-    // MARK: - International Station Card (Screenshot 3)
-    private func internationalStationCard(station: InternationalStation) -> some View {
-        Button {
-            triggerStationPlay(query: station.query)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(station.logoColor)
-                    
-                    VStack {
-                        Text(station.name)
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(12)
-                    }
-                }
-                .frame(width: 145, height: 145)
-                
-                Text(station.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                
-                Text(station.subtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            .frame(width: 145)
-        }
-        .buttonStyle(.plain)
-    }
-    
     // MARK: - Station Play Trigger
     private func triggerStationPlay(query: String) {
         #if canImport(UIKit)
@@ -440,13 +333,5 @@ struct FeaturedShow: Identifiable {
     let curator: String
     let description: String
     let bannerColor: Color
-    let query: String
-}
-
-struct InternationalStation: Identifiable {
-    let id: String
-    let name: String
-    let subtitle: String
-    let logoColor: Color
     let query: String
 }

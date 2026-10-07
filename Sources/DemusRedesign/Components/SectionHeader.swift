@@ -17,13 +17,17 @@ public struct SectionHeader: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 2) {
                 if let subtitle = subtitle {
-                    Text(subtitle.uppercased())
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AppleMusicTheme.secondaryLabel)
-                        .kerning(0.5)
+                    let cleanSub = subtitle.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    if cleanSub.count > 1 && cleanSub.uppercased() != "BECAUSE YOU RECENTLY LISTENED TO" {
+                        Text(cleanSub.uppercased())
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppleMusicTheme.secondaryLabel)
+                            .kerning(0.5)
+                    }
                 }
                 
-                Text(title)
+                let cleanTitle = title.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                Text(cleanTitle.isEmpty || cleanTitle == "More From" ? "More Music" : cleanTitle)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(AppleMusicTheme.label)
             }

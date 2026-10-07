@@ -102,8 +102,10 @@ public final class ExploreService: @unchecked Sendable {
         let history = LibraryRepository.shared.history
         var userArtists: [String] = []
         for song in history {
-            let a = song.artistName.trimmingCharacters(in: .whitespaces)
-            if !a.isEmpty && a != "Unknown Artist" && !userArtists.contains(a) && !Self.isLowQualityOrSpam(title: "", artist: a) {
+            var a = song.artistName.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if a.contains(",") { a = a.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? a }
+            if a.contains("&") { a = a.components(separatedBy: "&").first?.trimmingCharacters(in: .whitespaces) ?? a }
+            if !a.isEmpty && a != "Unknown Artist" && a.count > 1 && !userArtists.contains(a) && !Self.isLowQualityOrSpam(title: "", artist: a) {
                 userArtists.append(a)
             }
         }
@@ -150,12 +152,14 @@ public final class ExploreService: @unchecked Sendable {
         // Build History-driven personalized sections
         var personalizedHistorySections: [HomeSection] = []
         for artist in userArtists.prefix(2) {
-            if let artistSongs = try? await SearchService.shared.search(query: "\(artist) songs") {
+            let cleanArtist = artist.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard cleanArtist.count > 1 else { continue }
+            if let artistSongs = try? await SearchService.shared.search(query: "\(cleanArtist) songs") {
                 let clean = artistSongs.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
                 if !clean.isEmpty {
                     personalizedHistorySections.append(HomeSection(
-                        title: "More From \(artist)",
-                        subtitle: "Because you recently listened to \(artist)",
+                        title: "More From \(cleanArtist)",
+                        subtitle: "Because you recently listened to \(cleanArtist)",
                         songs: Array(clean.prefix(12)),
                         isPersonalized: true
                     ))
@@ -300,13 +304,19 @@ public final class ExploreService: @unchecked Sendable {
             
             if let header = shelf["header"] as? [String: Any],
                let basicHeader = header["musicCarouselShelfBasicHeaderRenderer"] as? [String: Any] {
-                if let titleRuns = (basicHeader["title"] as? [String: Any])?["runs"] as? [[String: Any]],
-                   let first = titleRuns.first {
-                    sectionTitle = first["text"] as? String ?? sectionTitle
+                if let titleRuns = (basicHeader["title"] as? [String: Any])?["runs"] as? [[String: Any]] {
+                    let joined = titleRuns.compactMap { $0["text"] as? String }.joined()
+                    var clean = joined.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    if clean.count > 1 {
+                        sectionTitle = clean
+                    }
                 }
-                if let straplineRuns = (basicHeader["strapline"] as? [String: Any])?["runs"] as? [[String: Any]],
-                   let first = straplineRuns.first {
-                    sectionSubtitle = first["text"] as? String
+                if let straplineRuns = (basicHeader["strapline"] as? [String: Any])?["runs"] as? [[String: Any]] {
+                    let joined = straplineRuns.compactMap { $0["text"] as? String }.joined()
+                    var clean = joined.replacingOccurrences(of: "•", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    if clean.count > 1 {
+                        sectionSubtitle = clean
+                    }
                 }
             }
             
