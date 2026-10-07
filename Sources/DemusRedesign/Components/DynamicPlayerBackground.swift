@@ -32,7 +32,7 @@ public struct DynamicPlayerBackground: View {
                             .frame(width: proxy.size.width * 1.35, height: proxy.size.height * 1.35)
                             .clipped()
                             .blur(radius: blurRadius, opaque: true)
-                            .saturation(1.3) // Vibrant Apple Music color pop
+                            .saturation(1.5) // Vibrant Apple Music color pop
                             .scaleEffect(isBreathing ? 1.08 : 1.0)
                             .rotationEffect(.degrees(isBreathing ? 3 : -3))
                             .animation(.easeInOut(duration: 8.0).repeatForever(autoreverses: true), value: isBreathing)
@@ -49,22 +49,22 @@ public struct DynamicPlayerBackground: View {
                 
                 // Frosted Liquid Glass Satin Veil
                 Rectangle()
-                    .fill(.ultraThinMaterial.opacity(0.35))
+                    .fill(.ultraThinMaterial.opacity(0.20))
                 
                 // Apple Music Signature Dynamic Gradient Overlays
                 // 1. Top subtle vignette for status bar / grabber
                 LinearGradient(
-                    colors: [Color.black.opacity(0.40), Color.clear],
+                    colors: [Color.black.opacity(0.30), Color.clear],
                     startPoint: .top,
                     endPoint: .center
                 )
                 
-                // 2. Bottom deep gradient for maximum readability of white playback controls & scrubber
+                // 2. Bottom gentle gradient for maximum readability of white playback controls & scrubber
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.20),
-                        .init(color: Color.black.opacity(0.35), location: 0.55),
-                        .init(color: Color.black.opacity(0.80), location: 1.0)
+                        .init(color: .clear, location: 0.25),
+                        .init(color: Color.black.opacity(0.25), location: 0.60),
+                        .init(color: Color.black.opacity(0.65), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom

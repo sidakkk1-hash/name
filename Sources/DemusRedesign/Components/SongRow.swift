@@ -7,23 +7,34 @@ import SwiftUI
 public struct SongRow: View {
     public let song: Song
     public var isCurrentPlaying: Bool
+    public var rank: Int? = nil
     public var onPlay: () -> Void
     public var onMenu: (() -> Void)?
     
     public init(
         song: Song,
+        rank: Int? = nil,
         isCurrentPlaying: Bool = false,
         onPlay: @escaping () -> Void,
         onMenu: (() -> Void)? = nil
     ) {
         self.song = song
+        self.rank = rank
         self.isCurrentPlaying = isCurrentPlaying
         self.onPlay = onPlay
         self.onMenu = onMenu
     }
     
     public var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
+            // Optional Apple Music Rank Number (1, 2, 3...)
+            if let rank = rank {
+                Text("\(rank)")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(isCurrentPlaying ? AppleMusicTheme.accent : AppleMusicTheme.secondaryLabel)
+                    .frame(width: 22, alignment: .trailing)
+            }
+            
             // Artwork Thumbnail (Tapping plays song)
             Button {
                 onPlay()

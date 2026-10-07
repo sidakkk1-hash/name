@@ -102,7 +102,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Build Version")
                         Spacer()
-                        Text("v2.0.30 (WebKit EmbedPlayer)")
+                        Text("v2.0.31 (Curated Explore & UI Polish)")
                             .foregroundStyle(AppleMusicTheme.accent)
                             .font(.system(size: 13, weight: .semibold))
                     }
@@ -243,7 +243,7 @@ public struct SettingsV: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("2.0.30")
+                        Text("2.0.31")
                             .foregroundStyle(AppleMusicTheme.secondaryLabel)
                     }
                     HStack {

@@ -53,69 +53,224 @@ public final class ExploreService: @unchecked Sendable {
         }
     }
     
+    // MARK: - Spam & Low-Quality Filter
+    public static func isLowQualityOrSpam(title: String, artist: String) -> Bool {
+        let t = title.lowercased()
+        let a = artist.lowercased()
+        let combined = "\(t) \(a)"
+        
+        let spamTokens = [
+            "lumivox", "midnight gravity", "chasing after-images",
+            "2026", "2025 ~", "top hits 2026", "best english songs",
+            "non stop", "jukebox", "compilation", "audio jukebox",
+            "dj mix", "full album songs", "remix 2025", "top 100 songs",
+            "trending 20", "daily top", "top 100 videos", "casa tupka",
+            "greatest hits - foo", "top 100 music"
+        ]
+        
+        for token in spamTokens {
+            if combined.contains(token) { return true }
+        }
+        
+        return false
+    }
+
     // MARK: - Fetch Real Home & Explore Content
     public func fetchExploreContent() async -> ExploreContent {
         var content = ExploreContent()
         let isLoggedIn = GoogleAccountManager.shared.isLoggedIn
         content.isPersonalized = isLoggedIn
         
-        // 1. Fetch FEmusic_home (Personalized feed when logged in, or curated home feed)
-        do {
-            let body: [String: Any] = [
-                "context": HTTPClient.makeYTMContext(),
-                "browseId": "FEmusic_home"
-            ]
-            let json = try await client.postJSON(urlString: Endpoints.browse, body: body)
-            let sections = parseHomeFeed(json: json, isPersonalized: isLoggedIn)
-            if !sections.isEmpty {
-                content.personalizedSections = sections
-                if let firstSection = sections.first {
-                    content.topSongs = firstSection.songs
-                }
-            }
-        } catch {
-            print("[ExploreService] FEmusic_home fetch error:", error)
-        }
-        
-        // 2. Fetch Charts as well for trending songs & artists
-        if content.topSongs.isEmpty || content.topArtists.isEmpty {
+        // 1. Fetch FEmusic_home if logged in
+        if isLoggedIn {
             do {
                 let body: [String: Any] = [
                     "context": HTTPClient.makeYTMContext(),
-                    "browseId": "FEmusic_charts"
+                    "browseId": "FEmusic_home"
                 ]
                 let json = try await client.postJSON(urlString: Endpoints.browse, body: body)
-                let (chartsSongs, artists) = parseCharts(json: json)
-                if content.topSongs.isEmpty {
-                    content.topSongs = chartsSongs
+                let sections = parseHomeFeed(json: json, isPersonalized: true)
+                if !sections.isEmpty {
+                    content.personalizedSections = sections
                 }
-                content.topArtists = artists
-            } catch {}
-        }
-        
-        // 3. Fallback search if still empty
-        if content.topSongs.isEmpty {
-            if let searchSongs = try? await SearchService.shared.search(query: "Top Global Hits 2026") {
-                content.topSongs = Array(searchSongs.prefix(15))
+            } catch {
+                print("[ExploreService] FEmusic_home fetch error:", error)
             }
         }
         
-        // 4. Fetch Top Albums
-        if let albums = try? await SearchService.shared.searchAlbums(query: "Top Hits Albums") {
-            content.newAlbums = Array(albums.prefix(10))
+        // 2. Taste Personalization from User's Playback History
+        let history = LibraryRepository.shared.history
+        var userArtists: [String] = []
+        for song in history {
+            let a = song.artistName.trimmingCharacters(in: .whitespaces)
+            if !a.isEmpty && a != "Unknown Artist" && !userArtists.contains(a) && !Self.isLowQualityOrSpam(title: "", artist: a) {
+                userArtists.append(a)
+            }
         }
         
-        // 5. Featured Playlists
-        content.featuredPlaylists = [
-            Playlist(
-                id: "pl-today-hits",
-                title: "Today's Hits",
-                descriptionText: "The biggest songs right now.",
-                artworkURL: content.topSongs.first?.artworkURL,
-                songs: content.topSongs,
+        // 3. Concurrently fetch curated Playlists, Albums, Artists & Charts
+        async let punjabiHitsTask = SearchService.shared.search(query: "Top Punjabi Hits 2024")
+        async let globalHitsTask = SearchService.shared.search(query: "Global Top Hits")
+        async let hipHopHitsTask = SearchService.shared.search(query: "Hip Hop Hits")
+        async let rockHitsTask = SearchService.shared.search(query: "90s Alternative Rock Hits")
+        async let popHitsTask = SearchService.shared.search(query: "Top Pop Hits")
+        
+        // Albums matching taste
+        async let dripsterAlbumTask = SearchService.shared.searchAlbums(query: "Dripster Cheema Y")
+        async let aujlaAlbumTask = SearchService.shared.searchAlbums(query: "Making Memories Karan Aujla")
+        async let ghostAlbumTask = SearchService.shared.searchAlbums(query: "Ghost Diljit Dosanjh")
+        async let shubhAlbumTask = SearchService.shared.searchAlbums(query: "Still Rollin Shubh")
+        async let utopiaAlbumTask = SearchService.shared.searchAlbums(query: "UTOPIA Travis Scott")
+        async let weekndAlbumTask = SearchService.shared.searchAlbums(query: "After Hours The Weeknd")
+        
+        // Top Artists matching taste
+        async let cheemaArtistTask = SearchService.shared.searchArtists(query: "Cheema Y")
+        async let aujlaArtistTask = SearchService.shared.searchArtists(query: "Karan Aujla")
+        async let diljitArtistTask = SearchService.shared.searchArtists(query: "Diljit Dosanjh")
+        async let sidhuArtistTask = SearchService.shared.searchArtists(query: "Sidhu Moose Wala")
+        async let shubhArtistTask = SearchService.shared.searchArtists(query: "Shubh")
+        async let apArtistTask = SearchService.shared.searchArtists(query: "AP Dhillon")
+        async let weekndArtistTask = SearchService.shared.searchArtists(query: "The Weeknd")
+        async let drakeArtistTask = SearchService.shared.searchArtists(query: "Drake")
+        async let travisArtistTask = SearchService.shared.searchArtists(query: "Travis Scott")
+        
+        // Await all parallel queries
+        let rawPunjabi = (try? await punjabiHitsTask) ?? []
+        let rawGlobal = (try? await globalHitsTask) ?? []
+        let rawHipHop = (try? await hipHopHitsTask) ?? []
+        let rawRock = (try? await rockHitsTask) ?? []
+        let rawPop = (try? await popHitsTask) ?? []
+        
+        let punjabiSongs = rawPunjabi.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+        let globalSongs = rawGlobal.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+        let hipHopSongs = rawHipHop.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+        let rockSongs = rawRock.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+        let popSongs = rawPop.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+        
+        // Build History-driven personalized sections
+        var personalizedHistorySections: [HomeSection] = []
+        for artist in userArtists.prefix(2) {
+            if let artistSongs = try? await SearchService.shared.search(query: "\(artist) songs") {
+                let clean = artistSongs.filter { !Self.isLowQualityOrSpam(title: $0.title, artist: $0.artistName) }
+                if !clean.isEmpty {
+                    personalizedHistorySections.append(HomeSection(
+                        title: "More From \(artist)",
+                        subtitle: "Because you recently listened to \(artist)",
+                        songs: Array(clean.prefix(12)),
+                        isPersonalized: true
+                    ))
+                }
+            }
+        }
+        
+        // Prepend personalized sections
+        content.personalizedSections = personalizedHistorySections + content.personalizedSections
+        
+        // 4. Curated Flagship Featured Playlists
+        var playlists: [Playlist] = []
+        
+        if !punjabiSongs.isEmpty {
+            playlists.append(Playlist(
+                id: "pl-punjabi-heat",
+                title: "Punjabi Heat",
+                descriptionText: "The hottest Punjabi bangers, hip-hop & desi drip.",
+                artworkURL: punjabiSongs.first?.artworkURL,
+                songs: punjabiSongs,
                 isUserCreated: false
-            )
+            ))
+        }
+        
+        if !globalSongs.isEmpty {
+            playlists.append(Playlist(
+                id: "pl-todays-hits",
+                title: "Today's Hits",
+                descriptionText: "The biggest songs across the globe right now.",
+                artworkURL: globalSongs.first?.artworkURL,
+                songs: globalSongs,
+                isUserCreated: false
+            ))
+        }
+        
+        if !hipHopSongs.isEmpty {
+            playlists.append(Playlist(
+                id: "pl-hiphop-essentials",
+                title: "Hip-Hop Essentials",
+                descriptionText: "Heavyweight beats, iconic bars & rap royalty.",
+                artworkURL: hipHopSongs.first?.artworkURL,
+                songs: hipHopSongs,
+                isUserCreated: false
+            ))
+        }
+        
+        if !rockSongs.isEmpty {
+            playlists.append(Playlist(
+                id: "pl-rock-alternative",
+                title: "Rock & Alternative",
+                descriptionText: "Essential guitar anthems, grunge & alt-rock staples.",
+                artworkURL: rockSongs.first?.artworkURL,
+                songs: rockSongs,
+                isUserCreated: false
+            ))
+        }
+        
+        if !popSongs.isEmpty {
+            playlists.append(Playlist(
+                id: "pl-alist-pop",
+                title: "A-List Pop",
+                descriptionText: "Chart-topping anthems from the world's biggest stars.",
+                artworkURL: popSongs.first?.artworkURL,
+                songs: popSongs,
+                isUserCreated: false
+            ))
+        }
+        
+        content.featuredPlaylists = playlists
+        
+        // 5. Popular Songs (Filtered Chart Toppers)
+        var combinedSongs: [Song] = []
+        for song in (punjabiSongs.prefix(5) + globalSongs.prefix(5) + hipHopSongs.prefix(5)) {
+            if !combinedSongs.contains(where: { $0.id == song.id }) {
+                combinedSongs.append(song)
+            }
+        }
+        content.topSongs = combinedSongs
+        
+        // 6. Curated New Release Albums
+        var albumsList: [Album] = []
+        let rawAlbumResults = [
+            (try? await dripsterAlbumTask)?.first,
+            (try? await aujlaAlbumTask)?.first,
+            (try? await ghostAlbumTask)?.first,
+            (try? await shubhAlbumTask)?.first,
+            (try? await utopiaAlbumTask)?.first,
+            (try? await weekndAlbumTask)?.first
         ]
+        for alb in rawAlbumResults.compactMap({ $0 }) {
+            if !albumsList.contains(where: { $0.id == alb.id || $0.title.lowercased() == alb.title.lowercased() }) {
+                albumsList.append(alb)
+            }
+        }
+        content.newAlbums = albumsList
+        
+        // 7. Curated Top Artists
+        var artistsList: [Artist] = []
+        let rawArtistResults = [
+            (try? await cheemaArtistTask)?.first,
+            (try? await aujlaArtistTask)?.first,
+            (try? await diljitArtistTask)?.first,
+            (try? await sidhuArtistTask)?.first,
+            (try? await shubhArtistTask)?.first,
+            (try? await apArtistTask)?.first,
+            (try? await weekndArtistTask)?.first,
+            (try? await drakeArtistTask)?.first,
+            (try? await travisArtistTask)?.first
+        ]
+        for art in rawArtistResults.compactMap({ $0 }) {
+            if !artistsList.contains(where: { $0.id == art.id || $0.name.lowercased() == art.name.lowercased() }) {
+                artistsList.append(art)
+            }
+        }
+        content.topArtists = artistsList
         
         return content
     }
@@ -208,6 +363,7 @@ public final class ExploreService: @unchecked Sendable {
         }
         
         guard !videoId.isEmpty else { return nil }
+        if Self.isLowQualityOrSpam(title: title, artist: artist) { return nil }
         
         var artworkURL: URL?
         if let thumbRenderer = renderer["thumbnail"] as? [String: Any],
@@ -231,6 +387,8 @@ public final class ExploreService: @unchecked Sendable {
         if let subRuns = (twoRow["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]], let first = subRuns.first {
             subtitle = first["text"] as? String ?? subtitle
         }
+        
+        if Self.isLowQualityOrSpam(title: title, artist: subtitle) { return nil }
         
         var videoId = ""
         if let nav = twoRow["navigationEndpoint"] as? [String: Any] {

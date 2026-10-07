@@ -16,40 +16,58 @@ public struct NowPlayingArtwork: View {
     }
     
     public var body: some View {
-        let artworkSize = min(targetWidth * 0.80, 360)
+        let artworkSize = min(targetWidth * 0.82, 360)
         
         ZStack {
-            if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id, resolution: .full) {
+            // Ambient Colored Aura Shadow (casts vibrant colors matching artwork)
+            if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id, resolution: .card) {
                 CachedAsyncImage(url: url) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(width: artworkSize * 0.86, height: artworkSize * 0.86)
+                        .blur(radius: isPlaying ? 32 : 16)
+                        .opacity(isPlaying ? 0.65 : 0.20)
+                        .offset(y: isPlaying ? 16 : 8)
                 } placeholder: {
+                    EmptyView()
+                }
+            }
+            
+            // Front High-Res Artwork
+            ZStack {
+                if let song = song, let url = ImageHelper.highResArtworkURL(from: song.artworkURL, videoId: song.id, resolution: .full) {
+                    CachedAsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        defaultArtworkPlaceholder(size: artworkSize)
+                    }
+                } else {
                     defaultArtworkPlaceholder(size: artworkSize)
                 }
-            } else {
-                defaultArtworkPlaceholder(size: artworkSize)
             }
+            .id(song?.id)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.4), value: song?.id)
+            .frame(width: artworkSize, height: artworkSize)
+            .clipShape(RoundedRectangle(cornerRadius: AppleMusicTheme.radiusArtworkNowPlaying, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppleMusicTheme.radiusArtworkNowPlaying, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+            // Apple Music Soft Ambient Shadow
+            .shadow(
+                color: Color.black.opacity(isPlaying ? 0.38 : 0.20),
+                radius: isPlaying ? 24 : 14,
+                x: 0,
+                y: isPlaying ? 14 : 7
+            )
         }
-        .id(song?.id)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.4), value: song?.id)
-        .frame(width: artworkSize, height: artworkSize)
-        .clipShape(RoundedRectangle(cornerRadius: AppleMusicTheme.radiusArtworkNowPlaying, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppleMusicTheme.radiusArtworkNowPlaying, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-        )
-        // Apple Music Soft Ambient Shadow
-        .shadow(
-            color: Color.black.opacity(isPlaying ? 0.40 : 0.22),
-            radius: isPlaying ? 28 : 16,
-            x: 0,
-            y: isPlaying ? 16 : 8
-        )
-        // Dynamic scale compression on pause
+        // Dynamic scale compression on pause (1.0 playing -> 0.84 paused)
         .scaleEffect(isPlaying ? 1.0 : 0.84)
-        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: isPlaying)
+        .animation(.spring(response: 0.45, dampingFraction: 0.72), value: isPlaying)
     }
     
     private func defaultArtworkPlaceholder(size: CGFloat) -> some View {

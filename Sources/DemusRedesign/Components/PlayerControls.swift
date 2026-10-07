@@ -170,28 +170,69 @@ public struct NativeSystemVolumeView: UIViewRepresentable {
 #endif
 
 // MARK: - AppleMusicVolumeSlider
-/// Native-style volume slider backed by MPVolumeView for system volume synchronization.
+/// Modern iOS 17/18 Apple Music volume slider.
+/// Features a sleek white capsule track, speaker icons, spring dragging expansion,
+/// and direct integration with PlayerEngine volume.
 public struct AppleMusicVolumeSlider: View {
-    public init() {}
-    public init(volume: Binding<Double>) {}
+    @Bindable public var player: PlayerEngine = .shared
+    @State private var isDragging: Bool = false
+    @State private var localVolume: Double = 0.8
+    
+    public init() {
+        self._localVolume = State(initialValue: PlayerEngine.shared.volume)
+    }
+    
+    public init(volume: Binding<Double>) {
+        self._localVolume = State(initialValue: volume.wrappedValue)
+    }
     
     public var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: "speaker.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.55))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.60))
             
-            #if canImport(MediaPlayer)
-            NativeSystemVolumeView()
-                .frame(height: 32)
-            #else
-            Slider(value: .constant(0.7), in: 0...1)
-                .tint(.white.opacity(0.85))
-            #endif
+            GeometryReader { geo in
+                let width = geo.size.width
+                let height: CGFloat = isDragging ? 9.0 : 6.0
+                let currentFraction = max(0.0, min(1.0, isDragging ? localVolume : player.volume))
+                
+                ZStack(alignment: .leading) {
+                    // Track Background (Frosted translucent)
+                    Capsule()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(height: height)
+                    
+                    // Filled Track (White Apple Music liquid bar)
+                    Capsule()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: max(height, width * CGFloat(currentFraction)), height: height)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            isDragging = true
+                            let progress = max(0.0, min(1.0, Double(gesture.location.x / width)))
+                            localVolume = progress
+                            player.volume = progress
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                            player.volume = localVolume
+                            #if canImport(UIKit)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                        }
+                )
+                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isDragging)
+            }
+            .frame(height: 28)
             
             Image(systemName: "speaker.wave.3.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.55))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.60))
         }
     }
 }

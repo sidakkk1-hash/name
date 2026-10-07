@@ -54,7 +54,7 @@ public struct ExploreV: View {
                         }
                     }
                     
-                    // 2. Featured Playlists (Today's Hits)
+                    // 2. Featured Playlists (Today's Hits & Curated Flagships)
                     if !exploreContent.featuredPlaylists.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader(title: "Featured Playlists", subtitle: "Handpicked for Today")
@@ -65,14 +65,7 @@ public struct ExploreV: View {
                                         NavigationLink {
                                             PlaylistDetailV(playlist: playlist)
                                         } label: {
-                                            MediaCard(
-                                                title: playlist.title,
-                                                subtitle: playlist.descriptionText ?? "Playlist",
-                                                artworkURL: playlist.artworkURL,
-                                                cardSize: 195
-                                            ) {
-                                                // NavigationLink
-                                            }
+                                            FeaturedPlaylistCard(playlist: playlist)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -117,7 +110,7 @@ public struct ExploreV: View {
                                         NavigationLink {
                                             AlbumV(album: album)
                                         } label: {
-                                            AlbumCard(album: album, size: 160) {}
+                                            AlbumCard(album: album, size: 160)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -138,7 +131,7 @@ public struct ExploreV: View {
                                         NavigationLink {
                                             ArtistV(artist: artist)
                                         } label: {
-                                            ArtistCard(artist: artist, diameter: 130) {}
+                                            ArtistCard(artist: artist, diameter: 130)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -148,15 +141,16 @@ public struct ExploreV: View {
                         }
                     }
                     
-                    // 6. Popular Songs (Real Chart Toppers)
+                    // 6. Popular Songs (Real Ranked Chart Toppers)
                     if !exploreContent.topSongs.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader(title: "Popular Songs", subtitle: "Chart Toppers")
                             
                             LazyVStack(spacing: 8) {
-                                ForEach(exploreContent.topSongs.prefix(10)) { song in
+                                ForEach(Array(exploreContent.topSongs.prefix(10).enumerated()), id: \.element.id) { index, song in
                                     SongRow(
                                         song: song,
+                                        rank: index + 1,
                                         isCurrentPlaying: player.currentSong?.id == song.id
                                     ) {
                                         player.play(song: song)
