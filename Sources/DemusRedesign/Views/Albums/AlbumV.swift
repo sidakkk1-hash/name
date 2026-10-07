@@ -85,7 +85,9 @@ public struct AlbumV: View {
                         
                         // Tappable Artist Name -> Navigates to ArtistV
                         if let aId = currentAlbum.artistId, !aId.isEmpty {
-                            NavigationLink(value: AppRoute.artist(aId)) {
+                            NavigationLink {
+                                ArtistV(browseId: aId)
+                            } label: {
                                 Text(currentAlbum.artist)
                                     .font(.system(size: 19, weight: .semibold))
                                     .foregroundStyle(AppleMusicTheme.accent)

@@ -237,9 +237,10 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.albums) { album in
-                                    NavigationLink(value: AppRoute.album(album.id)) {
+                                    NavigationLink {
+                                        AlbumV(album: album)
+                                    } label: {
                                         AlbumCard(album: album, size: 155)
-                                            .frame(width: 155)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -260,9 +261,10 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.singles) { single in
-                                    NavigationLink(value: AppRoute.album(single.id)) {
+                                    NavigationLink {
+                                        AlbumV(album: single)
+                                    } label: {
                                         AlbumCard(album: single, size: 155)
-                                            .frame(width: 155)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -283,9 +285,10 @@ public struct ArtistV: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 12) {
                                 ForEach(currentArtist.relatedArtists) { related in
-                                    NavigationLink(value: AppRoute.artist(related.id)) {
+                                    NavigationLink {
+                                        ArtistV(artist: related)
+                                    } label: {
                                         ArtistCard(artist: related, diameter: 135)
-                                            .frame(width: 135)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -354,26 +357,37 @@ public struct ArtistV: View {
     // MARK: - Hero Image View
     @ViewBuilder
     private var heroImageView: some View {
-        Color.clear
-            .frame(height: 380)
-            .overlay {
-                if let heroUrl = currentArtist.heroImageURL ?? currentArtist.artworkURL {
-                    CachedAsyncImage(url: heroUrl) { img in
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height: CGFloat = 380
+            
+            ZStack {
+                let displayURL = currentArtist.heroImageURL ?? currentArtist.artworkURL
+                if let url = displayURL {
+                    CachedAsyncImage(url: url) { img in
                         img
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .frame(width: width, height: height)
+                            .clipped()
                     } placeholder: {
-                        heroPlaceholder
+                        heroPlaceholder(width: width, height: height)
                     }
+                    .id(url.absoluteString)
+                    .transition(.opacity)
                 } else {
-                    heroPlaceholder
+                    heroPlaceholder(width: width, height: height)
                 }
             }
+            .frame(width: width, height: height)
             .clipped()
-            .allowsHitTesting(false)
+        }
+        .frame(height: 380)
+        .clipped()
+        .allowsHitTesting(false)
     }
     
-    private var heroPlaceholder: some View {
+    private func heroPlaceholder(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
             LinearGradient(
                 colors: [Color.gray.opacity(0.35), Color.black],
@@ -384,7 +398,7 @@ public struct ArtistV: View {
                 .font(.system(size: 80))
                 .foregroundStyle(.white.opacity(0.3))
         }
-        .frame(height: 380)
+        .frame(width: width, height: height)
         .allowsHitTesting(false)
     }
     

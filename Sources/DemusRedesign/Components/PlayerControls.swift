@@ -137,102 +137,81 @@ public struct AppleMusicPlaybackControls: View {
     }
 }
 
-#if canImport(MediaPlayer)
+#if canImport(MediaPlayer) && canImport(UIKit)
 import MediaPlayer
+import UIKit
 
-// MARK: - NativeSystemVolumeView
-/// Native MPVolumeView wrapped in UIViewRepresentable.
-/// Keeps on-screen slider synchronized 1:1 with hardware volume buttons,
-/// AirPods volume, and Control Center without using private APIs.
-public struct NativeSystemVolumeView: UIViewRepresentable {
-    public init() {}
-    
-    public func makeUIView(context: Context) -> MPVolumeView {
-        let volumeView = MPVolumeView(frame: .zero)
-        volumeView.showsRouteButton = false // Route picker is managed separately
-        volumeView.showsVolumeSlider = true
-        
-        // Style inner slider to match Apple Music dark frosted glass theme
-        DispatchQueue.main.async {
-            for subview in volumeView.subviews {
-                if let slider = subview as? UISlider {
-                    slider.minimumTrackTintColor = UIColor.white.withAlphaComponent(0.85)
-                    slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.20)
-                    slider.thumbTintColor = UIColor.white
-                }
-            }
-        }
-        return volumeView
+// MARK: - AppleMusicNativeVolumeView
+/// Native MPVolumeView synchronized 1:1 with hardware iPhone volume buttons,
+/// AirPods volume, and Control Center. Overrides layoutSubviews to ensure
+/// track is pure white and NEVER defaults to system blue.
+public final class AppleMusicNativeVolumeView: MPVolumeView {
+    public override init(frame: CGRect) {
+        super.init(frame: frame)
+        showsRouteButton = false
+        showsVolumeSlider = true
+        applyStyling()
     }
     
-    public func updateUIView(_ uiView: MPVolumeView, context: Context) {}
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        showsRouteButton = false
+        showsVolumeSlider = true
+        applyStyling()
+    }
+    
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        applyStyling()
+    }
+    
+    private func applyStyling() {
+        for subview in subviews {
+            if let slider = subview as? UISlider {
+                slider.tintColor = .white
+                slider.minimumTrackTintColor = .white
+                slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.20)
+                slider.thumbTintColor = .white
+            }
+        }
+    }
+}
+
+public struct NativeSystemVolumeRepresentable: UIViewRepresentable {
+    public init() {}
+    
+    public func makeUIView(context: Context) -> AppleMusicNativeVolumeView {
+        let view = AppleMusicNativeVolumeView(frame: .zero)
+        return view
+    }
+    
+    public func updateUIView(_ uiView: AppleMusicNativeVolumeView, context: Context) {}
 }
 #endif
 
 // MARK: - AppleMusicVolumeSlider
-/// Modern iOS 17/18 Apple Music volume slider.
-/// Features a sleek white capsule track, speaker icons, spring dragging expansion,
-/// and direct integration with PlayerEngine volume.
+/// Apple Music signature hardware-synced volume slider matching iOS Music.
 public struct AppleMusicVolumeSlider: View {
-    @Bindable public var player: PlayerEngine = .shared
-    @State private var isDragging: Bool = false
-    @State private var localVolume: Double = 0.8
-    
-    public init() {
-        self._localVolume = State(initialValue: PlayerEngine.shared.volume)
-    }
-    
-    public init(volume: Binding<Double>) {
-        self._localVolume = State(initialValue: volume.wrappedValue)
-    }
+    public init() {}
+    public init(volume: Binding<Double>) {}
     
     public var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: "speaker.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.60))
+                .foregroundStyle(.white.opacity(0.55))
             
-            GeometryReader { geo in
-                let width = geo.size.width
-                let height: CGFloat = isDragging ? 9.0 : 6.0
-                let currentFraction = max(0.0, min(1.0, isDragging ? localVolume : player.volume))
-                
-                ZStack(alignment: .leading) {
-                    // Track Background (Frosted translucent)
-                    Capsule()
-                        .fill(Color.white.opacity(0.22))
-                        .frame(height: height)
-                    
-                    // Filled Track (White Apple Music liquid bar)
-                    Capsule()
-                        .fill(Color.white.opacity(0.92))
-                        .frame(width: max(height, width * CGFloat(currentFraction)), height: height)
-                }
-                .frame(maxHeight: .infinity, alignment: .center)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { gesture in
-                            isDragging = true
-                            let progress = max(0.0, min(1.0, Double(gesture.location.x / width)))
-                            localVolume = progress
-                            player.volume = progress
-                        }
-                        .onEnded { _ in
-                            isDragging = false
-                            player.volume = localVolume
-                            #if canImport(UIKit)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            #endif
-                        }
-                )
-                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isDragging)
-            }
-            .frame(height: 28)
+            #if canImport(MediaPlayer) && canImport(UIKit)
+            NativeSystemVolumeRepresentable()
+                .frame(height: 32)
+            #else
+            Slider(value: .constant(0.8), in: 0...1)
+                .tint(.white)
+            #endif
             
             Image(systemName: "speaker.wave.3.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.60))
+                .foregroundStyle(.white.opacity(0.55))
         }
     }
 }

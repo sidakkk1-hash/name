@@ -418,11 +418,96 @@ public final class WKEmbedAudioEngine: NSObject, WKScriptMessageHandler, WKNavig
     
     public func play() {
         setupAudioSession()
-        webView?.evaluateJavaScript("if (player && typeof player.playVideo === 'function') { player.playVideo(); }", completionHandler: nil)
+        
+        let js = """
+        (() => {
+            try {
+                let targets = [window];
+                if (playerWindow) { targets.push(playerWindow); }
+                for (let wnd of targets) {
+                    try {
+                        wnd.navigator.audioSession.type = "playback";
+                    } catch(e) {}
+                }
+                if (typeof audio !== 'undefined' && audio) {
+                    audio.play().catch(() => {});
+                }
+                if (playerWindow) {
+                    let v = playerWindow.document.querySelector("video");
+                    if (v && v.paused) {
+                        v.play().catch(() => {});
+                    }
+                }
+            } catch(e) {}
+            if (player && typeof player.playVideo === 'function') {
+                player.playVideo();
+            }
+        })()
+        """
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+        
+        // Resilience Watchdog: If playback doesn't start within 1.2s (e.g. paused for 1-2 mins and connection went idle)
+        let savedTime = self.currentTime
+        let vId = self.currentVideoId
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
+            guard let self = self, self.isPlaying, self.diagnostics.playerState != "playing" else { return }
+            print("[WKEmbedAudioEngine] Stalled stream recovery triggered at \(savedTime)s")
+            
+            let recoveryJS = """
+            (() => {
+                try {
+                    if (player && typeof player.getPlayerState === 'function') {
+                        let st = player.getPlayerState();
+                        if (st !== 1) {
+                            if (typeof player.seekTo === 'function') {
+                                player.seekTo(\(savedTime), true);
+                            }
+                            if (typeof player.playVideo === 'function') {
+                                player.playVideo();
+                            }
+                        }
+                    }
+                } catch(e) {}
+            })()
+            """
+            self.webView?.evaluateJavaScript(recoveryJS, completionHandler: nil)
+            
+            // Stage 2: If stream socket dropped during idle pause, re-load video at exact saved time
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+            guard self.isPlaying, self.diagnostics.playerState != "playing", !vId.isEmpty else { return }
+            print("[WKEmbedAudioEngine] Re-anchoring stream via loadVideoById at \(savedTime)s")
+            
+            let reloadJS = """
+            (() => {
+                try {
+                    if (player && typeof player.loadVideoById === 'function') {
+                        player.loadVideoById({
+                            videoId: "\(vId)",
+                            startSeconds: \(savedTime)
+                        });
+                    }
+                } catch(e) {}
+            })()
+            """
+            self.webView?.evaluateJavaScript(reloadJS, completionHandler: nil)
+        }
     }
     
     public func pause() {
-        webView?.evaluateJavaScript("if (player && typeof player.pauseVideo === 'function') { player.pauseVideo(); }", completionHandler: nil)
+        let js = """
+        (() => {
+            try {
+                if (typeof audio !== 'undefined' && audio) {
+                    audio.pause();
+                }
+            } catch(e) {}
+            if (player && typeof player.pauseVideo === 'function') {
+                player.pauseVideo();
+            }
+        })()
+        """
+        webView?.evaluateJavaScript(js, completionHandler: nil)
     }
     
     public func togglePlay() {
