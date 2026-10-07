@@ -326,18 +326,14 @@ public struct PlaylistPlaygroundV: View {
         let newPlaylist = Playlist(
             id: UUID().uuidString,
             title: generatedTitle,
+            author: "You",
             descriptionText: "Curated with Playlist Playground: \(moodTags.joined(separator: " · "))",
             artworkURL: generatedSongs.first?.artworkURL,
             songs: generatedSongs,
             isUserCreated: true
         )
         
-        LibraryRepository.shared.createPlaylist(title: generatedTitle)
-        if let created = LibraryRepository.shared.playlists.last {
-            for song in generatedSongs {
-                LibraryRepository.shared.addSong(song, to: created.id)
-            }
-        }
+        LibraryRepository.shared.addPlaylist(newPlaylist)
         
         withAnimation {
             isSaved = true
