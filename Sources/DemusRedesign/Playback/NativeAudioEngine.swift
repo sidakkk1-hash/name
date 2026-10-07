@@ -365,10 +365,4 @@ public final class NativeAudioEngine: NSObject, @unchecked Sendable {
         }
         playerItem = nil
     }
-    
-    deinit {
-        if let token = timeObserverToken {
-            player.removeTimeObserver(token)
-        }
-    }
 }
